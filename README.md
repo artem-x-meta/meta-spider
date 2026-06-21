@@ -153,7 +153,7 @@ quantization down to Q4_K_M (refusal_prec ~0.97). Details — [`meta-deploy/`](m
 
 ## Architecture
 
-The concept is fully described in the [paper](../publish/github/meta-attention-is-all-you-need.md).
+The concept is described in the project write-up (meta-attention-is-all-you-need).
 In short — 5 components:
 
 ```text
@@ -423,15 +423,15 @@ report.save_json("results.json")
 
 The framework is assembled from validated implementations of the original project:
 
-- **Doubter** — a port of Phase 1-8 (`publish/github/src/phase{1..8}_*`).
+- **Doubter** — a port of the original project's Phase 1-8 implementation.
 
 Current state:
 
 - 163 smoke tests green (`tests/`)
 - API stabilized — modular public surface: import from `meta_core` / `meta_loom` / `meta_agent`
   directly (the `meta_spider` umbrella is kept only as an optional back-compat shim)
-- Real Phase 2 Selective checkpoints available on the HF Hub: `Imperius/meta-transformers`
-  (see the parent repo's `publish/github/README.md`)
+- Trained Doubter checkpoints (Qwen, Granite) are published on the Hugging Face Hub
+  (each with a model card + GGUF sidecar)
 
 Absent (by design, deferred):
 
@@ -441,11 +441,9 @@ Absent (by design, deferred):
 
 ## Further reading
 
-- Concept and detailed walkthrough: [`meta-attention-is-all-you-need.md`](../publish/github/meta-attention-is-all-you-need.md)
-- Architecture (Russian, parent repo): [`docs/architecture.md`](../docs/architecture.md)
-- Experiment summary: [`docs/results/llama-8b-summary.md`](../docs/results/llama-8b-summary.md)
-- Reproducible Phase 1-8 implementation: [`publish/github/src/`](../publish/github/src/)
+- Browsable docs: [`docs-site/index.html`](docs-site/index.html) — open in any browser (EN/RU)
+- Per-package details: the `README.md` inside each of `meta-core/` · `meta-loom/` · `meta-agent/` · `meta-deploy/`
 
 ## License
 
-Apache-2.0 (see the parent [`publish/github/LICENSE`](../publish/github/LICENSE)).
+MIT — see [`LICENSE`](LICENSE).
