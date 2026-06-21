@@ -122,6 +122,7 @@
     <h4>Guides</h4>
     <a href="#training">Training a Doubter</a>
     <a href="#evaluation">Evaluation &amp; metrics</a>
+    <a href="#agent">Agentic runtime</a>
     <a href="#deploy">Deploy to llama.cpp</a>
     <h4>Reference</h4>
     <a href="#api">API reference</a>
@@ -140,6 +141,7 @@
     <h4>Руководства</h4>
     <a href="#training-ru">Обучение Скептика</a>
     <a href="#evaluation-ru">Оценка и метрики</a>
+    <a href="#agent-ru">Агентный рантайм</a>
     <a href="#deploy-ru">Деплой в llama.cpp</a>
     <h4>Справочник</h4>
     <a href="#api-ru">Справочник API</a>
@@ -218,6 +220,8 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
 <span class="c"># → "I'm not confident enough to answer this question accurately."</span></pre>
     <p>Dimensions (<code>hidden_dim</code>, <code>num_layers</code>) are auto-detected from the
       base. Layer selection accepts explicit lists or presets <code>"all"</code> / <code>"late"</code>.</p>
+    <div class="note"><b>Want to train your own?</b> The <code>metaloom</code> CLI is the fast path —
+      <code>collect → train → eval</code> in three commands. See <a href="#training">Training</a>.</div>
   </section>
 
   <section id="how-it-works">
@@ -339,6 +343,16 @@ meta-deploy →  meta-core               <span class="c"># export wrapper → ll
       <tr><td><code>ca_gate_init</code></td><td>Gate init — keep at <b>0.3</b> (linear zone of tanh; 2.0 freezes gates).</td></tr>
       <tr><td><code>enable_self_correction</code></td><td>Phase-2 confirm/correct/refuse targets.</td></tr>
     </table>
+    <h3>TrainerConfig</h3>
+    <table>
+      <tr><th>Field</th><th>Meaning</th></tr>
+      <tr><td><code>epochs</code></td><td>Max epochs — converges in ~2; early-stop guards the rest.</td></tr>
+      <tr><td><code>learning_rate</code></td><td>Base LR (2e-4); gates &amp; token-preferences get <code>gate_lr_multiplier×</code> (5).</td></tr>
+      <tr><td><code>batch_size</code>, <code>grad_accumulation</code></td><td>Effective batch = the product; small bs + accumulation fits tiny GPUs.</td></tr>
+      <tr><td><code>pretrain_projectors</code></td><td>Pretrain per-layer probes (~1&nbsp;min CPU) — required for deep encoders.</td></tr>
+      <tr><td><code>optimizer</code></td><td><code>"adamw"</code> or <code>"adam8bit"</code> (4× less optimizer memory — 8–12B on 4&nbsp;GB).</td></tr>
+      <tr><td><code>early_stop_patience</code></td><td>Stop after N epochs without validation improvement.</td></tr>
+    </table>
   </section>
 
   <section id="training">
@@ -415,6 +429,31 @@ print(report.summary())</pre>
     <div class="warn"><b>Honesty caveat.</b> Refusal precision is only meaningful against the
       base oracle. A naive "refusal text ≠ answer" check is ~always true and inflates the
       number — avoid it.</div>
+  </section>
+
+  <section id="agent">
+    <h2>Agentic runtime</h2>
+    <p>Run the trained wrapper inside an agent loop — tools, history, and a calibrated decision to
+      answer, look something up, or refuse. The runtime is thin: it adds the agent <i>layer</i>
+      (loop, tools), not a second copy of the two-pass core.</p>
+<pre>meta-agent run --run-dir runs/my <span class="s">"What is the capital of France?"</span>
+<span class="c"># reads run.json (model, layers, checkpoint) — nothing to type by hand</span></pre>
+    <h3>Native tool-use, not hand-rolled ReAct</h3>
+    <p>Live instruct models do not hold a text "Action: tool[arg]" protocol — they invent a fake
+      Observation and never stop. So the prompt is built with the model's own
+      <code>apply_chat_template(tools=…)</code>, and the output is parsed in its native tool format
+      (<code>&lt;function=…&gt;</code> / JSON).</p>
+    <table>
+      <tr><th>Piece</th><th>Role</th></tr>
+      <tr><td><code>MetaAgent</code> · <code>Session</code></td><td>the loop + conversation state.</td></tr>
+      <tr><td><code>ToolRegistry</code> · <code>Tool</code></td><td>tools the model may call.</td></tr>
+      <tr><td><code>NativeToolPrompt</code> / <code>NativeToolRenderer</code></td><td>build the native prompt / parse the native tool call.</td></tr>
+      <tr><td><code>StopBackend</code></td><td>truncates at the turn's stop strings (else the model plays both roles).</td></tr>
+      <tr><td><code>InferenceBackend</code></td><td>the seam below Policy: <code>MetaSpiderBackend</code> (GPU), <code>LlamaCppBackend</code> (CPU), … each pulls its own heavy dependency lazily.</td></tr>
+    </table>
+    <div class="note"><b>Thinking gotcha, in one place.</b> Disabling reasoning carries <i>both</i> keys
+      (<code>enable_thinking</code> + <code>thinking</code>) — different families name it differently;
+      the unused one is ignored by the chat template.</div>
   </section>
 
   <section id="deploy">
@@ -563,6 +602,8 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
 <span class="c"># → "I'm not confident enough to answer this question accurately."</span></pre>
     <p>Размерности (<code>hidden_dim</code>, <code>num_layers</code>) определяются автоматически
       из базы. Выбор слоёв принимает явные списки или пресеты <code>"all"</code> / <code>"late"</code>.</p>
+    <div class="note"><b>Хотите обучить свой?</b> Быстрый путь — CLI <code>metaloom</code>:
+      <code>collect → train → eval</code> в три команды. См. <a href="#training-ru">Обучение</a>.</div>
   </section>
 
   <section id="how-it-works-ru">
@@ -689,6 +730,16 @@ meta-deploy →  meta-core               <span class="c"># экспорт обв
       <tr><td><code>ca_gate_init</code></td><td>Инициализация гейта — держите <b>0.3</b> (линейная зона tanh; 2.0 замораживает гейты).</td></tr>
       <tr><td><code>enable_self_correction</code></td><td>Таргеты Фазы 2: confirm/correct/refuse.</td></tr>
     </table>
+    <h3>TrainerConfig</h3>
+    <table>
+      <tr><th>Поле</th><th>Значение</th></tr>
+      <tr><td><code>epochs</code></td><td>Макс. эпох — сходится за ~2; остальное страхует early-stop.</td></tr>
+      <tr><td><code>learning_rate</code></td><td>Базовый LR (2e-4); гейты и token-preferences с <code>gate_lr_multiplier×</code> (5).</td></tr>
+      <tr><td><code>batch_size</code>, <code>grad_accumulation</code></td><td>Эффективный батч = произведение; малый bs + накопление влезает в маленькие GPU.</td></tr>
+      <tr><td><code>pretrain_projectors</code></td><td>Предобучение послойных проб (~1&nbsp;мин CPU) — обязательно для глубоких энкодеров.</td></tr>
+      <tr><td><code>optimizer</code></td><td><code>"adamw"</code> или <code>"adam8bit"</code> (в 4× меньше памяти оптимизатора — 8–12B на 4&nbsp;ГБ).</td></tr>
+      <tr><td><code>early_stop_patience</code></td><td>Остановка после N эпох без улучшения на валидации.</td></tr>
+    </table>
   </section>
 
   <section id="training-ru">
@@ -764,6 +815,31 @@ print(report.summary())</pre>
     <div class="warn"><b>Оговорка о честности.</b> Точность отказа осмысленна только против оракула
       базы. Наивная проверка «текст отказа ≠ ответ» почти всегда истинна и раздувает число —
       избегайте её.</div>
+  </section>
+
+  <section id="agent-ru">
+    <h2>Агентный рантайм</h2>
+    <p>Запустить обученную обвязку в агентной петле — инструменты, история и калиброванное решение:
+      ответить, что-то найти или отказаться. Рантайм тонкий: добавляет агентный <i>слой</i> (петля,
+      инструменты), а не вторую копию двухпроходного ядра.</p>
+<pre>meta-agent run --run-dir runs/my <span class="s">"What is the capital of France?"</span>
+<span class="c"># читает run.json (модель, слои, чекпойнт) — руками ничего вбивать не надо</span></pre>
+    <h3>Нативный tool-use, а не самодельный ReAct</h3>
+    <p>Живые instruct-модели не держат текстовый протокол «Action: tool[arg]» — дописывают фейковый
+      Observation и не останавливаются. Поэтому промпт строится через собственный
+      <code>apply_chat_template(tools=…)</code> модели, а вывод парсится в её нативном тул-формате
+      (<code>&lt;function=…&gt;</code> / JSON).</p>
+    <table>
+      <tr><th>Часть</th><th>Роль</th></tr>
+      <tr><td><code>MetaAgent</code> · <code>Session</code></td><td>петля + состояние диалога.</td></tr>
+      <tr><td><code>ToolRegistry</code> · <code>Tool</code></td><td>инструменты, которые модель может вызвать.</td></tr>
+      <tr><td><code>NativeToolPrompt</code> / <code>NativeToolRenderer</code></td><td>строит нативный промпт / парсит нативный тул-вызов.</td></tr>
+      <tr><td><code>StopBackend</code></td><td>обрезает по стоп-строкам хода (иначе модель играет обе роли).</td></tr>
+      <tr><td><code>InferenceBackend</code></td><td>шов ниже Policy: <code>MetaSpiderBackend</code> (GPU), <code>LlamaCppBackend</code> (CPU), … каждый лениво тянет свою тяжёлую зависимость.</td></tr>
+    </table>
+    <div class="note"><b>Гоча с thinking — в одном месте.</b> Отключение reasoning несёт <i>оба</i> ключа
+      (<code>enable_thinking</code> + <code>thinking</code>) — у разных семейств он называется
+      по-разному; лишний игнорируется шаблоном.</div>
   </section>
 
   <section id="deploy-ru">
