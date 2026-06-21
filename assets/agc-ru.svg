@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 530" font-family="-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#8a93a6"/>
+    </marker>
+    <marker id="arrg" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#f0b86e"/>
+    </marker>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="899" height="529" rx="14" fill="#11141b" stroke="#262b37"/>
+
+  <text x="40" y="44" fill="#cfd6e2" font-size="13.5" font-weight="700">Самоусиление сигнала неуверенности на длинной генерации — и как AGC его гасит</text>
+
+  <line x1="450" y1="70" x2="450" y2="408" stroke="#262b37" stroke-width="1"/>
+
+  <!-- ===================== LEFT: без регулятора ===================== -->
+  <text x="60" y="92" fill="#f0b86e" font-size="14" font-weight="700">Без регулятора</text>
+  <text x="60" y="110" fill="#9aa3b2" font-size="10.5">приток самоусиливается → бак переполняется</text>
+
+  <!-- inflow -->
+  <path d="M155,128 L155,162" stroke="#7a8493" stroke-width="2" fill="none" marker-end="url(#arr)"/>
+  <text x="120" y="146" fill="#9aa3b2" font-size="10.5" text-anchor="end">+ впрыск</text>
+  <!-- self-amplification loop -->
+  <path d="M214,180 C286,168 282,118 168,126" stroke="#f0b86e" stroke-width="2" fill="none" marker-end="url(#arrg)"/>
+  <text x="298" y="150" fill="#f0b86e" font-size="10.5">самоусиление</text>
+  <text x="298" y="165" fill="#9aa3b2" font-size="10">(положит. ОС)</text>
+
+  <!-- tank (overflowing) -->
+  <ellipse cx="155" cy="332" rx="78" ry="7" fill="#2f5a8a" opacity="0.45"/>
+  <rect x="95" y="162" width="120" height="170" rx="6" fill="#0e1622" stroke="#3a4456" stroke-width="2"/>
+  <rect x="98" y="170" width="114" height="159" rx="3" fill="#2f5a8a" opacity="0.92"/>
+  <line x1="98" y1="170" x2="212" y2="170" stroke="#6ea8fe" stroke-width="2"/>
+  <circle cx="96" cy="180" r="4" fill="#6ea8fe"/><circle cx="92" cy="198" r="4" fill="#6ea8fe"/>
+  <circle cx="214" cy="180" r="4" fill="#6ea8fe"/><circle cx="218" cy="200" r="4" fill="#6ea8fe"/>
+  <text x="155" y="252" fill="#cfd6e2" font-size="10.5" text-anchor="middle" opacity="0.9">сигнал</text>
+  <text x="155" y="267" fill="#cfd6e2" font-size="10.5" text-anchor="middle" opacity="0.9">неуверенности</text>
+
+  <!-- consequence -->
+  <text x="60" y="362" fill="#cfd6e2" font-size="11" font-weight="600">Бак переполнен →</text>
+  <text x="60" y="380" fill="#9aa3b2" font-size="10.5">модель перестаёт быть уверенной,</text>
+  <text x="60" y="396" fill="#9aa3b2" font-size="10.5">оспаривает даже свои прежние ответы →</text>
+  <text x="60" y="412" fill="#f0b86e" font-size="10.5" font-weight="600">зацикливание · «параноик»</text>
+
+  <!-- ===================== RIGHT: с AGC ===================== -->
+  <text x="490" y="92" fill="#7ee0c0" font-size="14" font-weight="700">С AGC — регулятор</text>
+  <text x="490" y="110" fill="#9aa3b2" font-size="10.5">приток дросселируется → уровень держится</text>
+
+  <!-- inflow through AGC valve -->
+  <path d="M685,128 L685,140" stroke="#7a8493" stroke-width="2" fill="none"/>
+  <rect x="662" y="118" width="46" height="20" rx="5" fill="#211c12" stroke="#f0b86e"/>
+  <text x="685" y="132" fill="#f0b86e" font-size="11" font-weight="700" text-anchor="middle">AGC</text>
+  <path d="M685,140 L685,162" stroke="#7a8493" stroke-width="1.3" fill="none" marker-end="url(#arr)"/>
+  <text x="718" y="135" fill="#9aa3b2" font-size="10">дросселирует</text>
+  <text x="718" y="148" fill="#9aa3b2" font-size="10">приток</text>
+
+  <!-- tank (at setpoint) -->
+  <rect x="625" y="162" width="120" height="170" rx="6" fill="#0e1622" stroke="#3a4456" stroke-width="2"/>
+  <rect x="628" y="240" width="114" height="89" rx="3" fill="#2f7a5a" opacity="0.9"/>
+  <line x1="628" y1="240" x2="742" y2="240" stroke="#7ee0c0" stroke-width="2"/>
+  <line x1="618" y1="240" x2="752" y2="240" stroke="#7ee0c0" stroke-width="1" stroke-dasharray="4 4"/>
+  <text x="685" y="290" fill="#cfd6e2" font-size="10.5" text-anchor="middle" opacity="0.9">сомнение</text>
+  <text x="685" y="225" fill="#7ee0c0" font-size="9.5" text-anchor="middle">floor · setpoint</text>
+
+  <!-- consequence -->
+  <text x="490" y="362" fill="#cfd6e2" font-size="11" font-weight="600">α убывает к floor →</text>
+  <text x="490" y="380" fill="#9aa3b2" font-size="10.5">доливает только против стока →</text>
+  <text x="490" y="396" fill="#9aa3b2" font-size="10.5">уровень неуверенности равномерный:</text>
+  <text x="490" y="412" fill="#7ee0c0" font-size="10.5" font-weight="600">сомнение есть, но не убегает</text>
+
+  <!-- ===================== bottom ===================== -->
+  <text x="450" y="452" fill="#9aa3b2" font-size="11" text-anchor="middle">AGC · Automatic Gain Control — термин из схемотехники: ООС держит амплитуду сигнала на уровне</text>
+  <text x="450" y="480" fill="#cfd6e2" font-size="13" text-anchor="middle" font-family="ui-monospace, Consolas, monospace">α = floor + (1 − floor) · e^(−шаг / τ)</text>
+</svg>
