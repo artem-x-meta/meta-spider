@@ -240,6 +240,15 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
     <div class="note"><b>Why frozen?</b> Any unfreezing (LoRA, partial) lets the model take a
       shortcut through its own weights and refusal calibration collapses. Keeping the base
       frozen forces the signal through the introspection channel.</div>
+
+    <h3>Long generation: AGC</h3>
+    <img class="diagram" src="assets/agc-en.svg" alt="AGC: the uncertainty signal self-amplifies; a gain control holds it at a setpoint">
+    <p>Over long generations the injected uncertainty <b>self-amplifies</b> — the live residual attends
+      more strongly to the cognitive tokens as drift grows — and the model can spiral into a refusal
+      loop. <b>AGC</b> (Automatic Gain Control, a term borrowed from electronics) damps it: a coefficient
+      <code>α = floor + (1−floor)·e^(−step/τ)</code> starts at full and decays to a <code>floor</code>,
+      topping up against the "drain" so doubt holds at a steady setpoint instead of running away. It is
+      opt-in — the validated short-generation regime is untouched.</p>
   </section>
 
   <section id="architecture">
@@ -529,6 +538,13 @@ META_PROMPT=<span class="s">"What is the capital of France?"</span> \
     <h3>Can I train on a small GPU?</h3>
     <p>Yes — use <code>quantization="nf4"</code> + <code>gradient_checkpointing=True</code>.
       Gradients still flow through the frozen 4-bit base to the wrapper.</p>
+    <h3>Does a wrapper transfer across models?</h3>
+    <p>No. It is calibrated to one model's activation distribution. Attaching a base-trained Doubter to
+      an instruct fine-tune (or a different model) pushes hidden states out of distribution and breaks
+      generation — retrain on the target model's activations.</p>
+    <h3>What about very long generations?</h3>
+    <p>The uncertainty signal can self-amplify and loop. Turn on <b>AGC</b> (see
+      <a href="#how-it-works">How it works</a>) to hold it at a setpoint.</p>
   </section>
   </div><!-- /.en -->
 
@@ -621,6 +637,15 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
     <div class="note"><b>Почему заморожена?</b> Любая разморозка (LoRA, частичная) даёт модели
       срезать путь через собственные веса, и калибровка отказа разваливается. Заморозка базы
       заставляет сигнал идти через интроспективный канал.</div>
+
+    <h3>Длинная генерация: AGC</h3>
+    <img class="diagram" src="assets/agc-ru.svg" alt="AGC: сигнал неуверенности самоусиливается; регулятор усиления держит его на setpoint">
+    <p>На длинной генерации впрыснутая неуверенность <b>самоусиливается</b> — живой residual всё сильнее
+      тянется к когнитивным токенам по мере роста дрейфа — и модель может уйти в петлю отказа.
+      <b>AGC</b> (Automatic Gain Control, термин из схемотехники) это гасит: коэффициент
+      <code>α = floor + (1−floor)·e^(−шаг/τ)</code> стартует с максимума и убывает к <code>floor</code>,
+      доливая против «стока», — сомнение держится на ровном setpoint, а не убегает. Это opt-in —
+      валидированный режим коротких генераций не трогается.</p>
   </section>
 
   <section id="architecture-ru">
@@ -913,6 +938,13 @@ META_PROMPT=<span class="s">"What is the capital of France?"</span> \
     <h3>Можно ли обучать на маленькой GPU?</h3>
     <p>Да — используйте <code>quantization="nf4"</code> + <code>gradient_checkpointing=True</code>.
       Градиенты всё равно текут сквозь замороженную 4-битную базу к обвязке.</p>
+    <h3>Переносится ли обвязка между моделями?</h3>
+    <p>Нет. Она калибрована под распределение активаций одной модели. Если приклеить base-обученного
+      Скептика к instruct-версии (или другой модели), скрытые состояния уйдут в OOD и генерация
+      сломается — нужно переобучить на активациях целевой модели.</p>
+    <h3>Что на очень длинных генерациях?</h3>
+    <p>Сигнал неуверенности может самоусилиться и зациклиться. Включите <b>AGC</b> (см.
+      <a href="#how-it-works-ru">Как это работает</a>), чтобы держать его на setpoint.</p>
   </section>
   </div><!-- /.ru -->
 </main>
