@@ -345,9 +345,26 @@ meta-deploy →  meta-core               <span class="c"># export wrapper → ll
     <h2>Training a Doubter</h2>
     <img class="diagram" src="assets/training-en.svg" alt="Training: collector + oracle, then forward/backward through the frozen base">
     <img class="diagram" src="assets/caching-en.svg" alt="Time saved by caching: collect-once, slice, inference KV-cache">
-    <p>Training is two stages: collect activations once (cached), then train the wrapper.</p>
-<pre><span class="k">from</span> meta_spider <span class="k">import</span> (ActivationDatasetCollector, Doubter, DoubterConfig,
-                         Trainer, TrainerConfig)
+    <p>Training is two stages: collect activations once (they are cached), then train the
+      wrapper. Run it two ways — the <b>CLI</b> (recommended) or the Python API.</p>
+
+    <h3>CLI — three stages, one manifest</h3>
+    <p>The <code>metaloom</code> CLI splits the pipeline into <code>collect → train → eval</code>,
+      linked by a <code>run.json</code> manifest (model · layers · dataset). <code>collect</code>
+      writes it; <code>train</code>, <code>eval</code>, <code>meta-agent</code> and
+      <code>metadeploy</code> read it via <code>--run-dir</code> — so you never retype the flags.</p>
+<pre>metaloom collect --run-dir runs/my --model-name Qwen/Qwen2.5-0.5B-Instruct \
+                 --dataset mmlu --target-layers late --encoder-type selective --mcq-direct
+metaloom train   --run-dir runs/my --epochs 6
+metaloom eval    --run-dir runs/my</pre>
+    <div class="warn"><b>Thinking models → <code>--mcq-direct</code>.</b> Qwen / Gemma-it / Granite
+      open a <code>&lt;think&gt;</code> block and never reach the answer on the short Pass&nbsp;1, so the
+      oracle flag stays 0 and the Doubter collapses into permanent refusal. <code>--mcq-direct</code>
+      disables thinking and asks for the letter only.</div>
+
+    <h3>Python API</h3>
+<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter, DoubterConfig
+<span class="k">from</span> meta_loom <span class="k">import</span> ActivationDatasetCollector, Trainer, TrainerConfig
 
 <span class="c"># 1. Collect activations (Pass-1 forward + pass1_correct oracle flag)</span>
 collector = ActivationDatasetCollector(pipe, max_new_tokens=<span class="n">50</span>,
@@ -412,6 +429,15 @@ print(report.summary())</pre>
       <li>Optional <b>dynamic refresh</b> re-encodes cognitive tokens during long
         generations (cosine-similarity gated).</li>
     </ol>
+<pre>metadeploy export --run-dir runs/my            <span class="c"># wrapper → doubter_sidecar.gguf</span>
+
+<span class="c"># two-pass inference inside the llama.cpp fork (CPU, no PyTorch):</span>
+META_SIDECAR=doubter_sidecar.gguf META_LAYERS=16,17,18,19,20,21,22,23 \
+META_PROMPT=<span class="s">"What is the capital of France?"</span> \
+  ./build/bin/llama-meta-generate -m base.Q4_K_M.gguf -c 2048 -t 4</pre>
+    <p>Build the fork and the <code>llama-meta-generate</code> example as described in the
+      <code>meta-deploy</code> README (<code>llama_patch/</code> applies to llama.cpp base
+      <code>b9619</code>).</p>
     <div class="note"><b>Robustness.</b> The self-assessment signal survives 4-bit
       compression: behavior (refuse / answer) holds down to <code>Q4_K_M</code> with
       negligible loss.</div>
@@ -663,9 +689,26 @@ meta-deploy →  meta-core               <span class="c"># экспорт обв
     <h2>Обучение Скептика</h2>
     <img class="diagram" src="assets/training-ru.svg" alt="Обучение: коллектор + оракул, затем forward/backward сквозь замороженную базу">
     <img class="diagram" src="assets/caching-ru.svg" alt="Экономия времени кэшированием: collect-кэш, срез, KV-кэш на инференсе">
-    <p>Обучение в две стадии: один раз собрать активации (закэшировать), затем обучить обвязку.</p>
-<pre><span class="k">from</span> meta_spider <span class="k">import</span> (ActivationDatasetCollector, Doubter, DoubterConfig,
-                         Trainer, TrainerConfig)
+    <p>Обучение в две стадии: один раз собрать активации (они кэшируются), затем обучить обвязку.
+      Запустить можно двумя способами — через <b>CLI</b> (рекомендуется) или Python API.</p>
+
+    <h3>CLI — три стадии, один манифест</h3>
+    <p>CLI <code>metaloom</code> разбивает конвейер на <code>collect → train → eval</code>, связанные
+      манифестом <code>run.json</code> (модель · слои · датасет). <code>collect</code> его пишет;
+      <code>train</code>, <code>eval</code>, <code>meta-agent</code> и <code>metadeploy</code> читают
+      через <code>--run-dir</code> — флаги не приходится дублировать.</p>
+<pre>metaloom collect --run-dir runs/my --model-name Qwen/Qwen2.5-0.5B-Instruct \
+                 --dataset mmlu --target-layers late --encoder-type selective --mcq-direct
+metaloom train   --run-dir runs/my --epochs 6
+metaloom eval    --run-dir runs/my</pre>
+    <div class="warn"><b>Thinking-модели → <code>--mcq-direct</code>.</b> Qwen / Gemma-it / Granite
+      открывают <code>&lt;think&gt;</code> и не доходят до ответа за короткий Pass&nbsp;1, поэтому флаг
+      оракула всегда 0, и Скептик схлопывается в вечный отказ. <code>--mcq-direct</code> отключает
+      thinking и просит только букву ответа.</div>
+
+    <h3>Python API</h3>
+<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter, DoubterConfig
+<span class="k">from</span> meta_loom <span class="k">import</span> ActivationDatasetCollector, Trainer, TrainerConfig
 
 <span class="c"># 1. Сбор активаций (прямой проход Pass-1 + флаг оракула pass1_correct)</span>
 collector = ActivationDatasetCollector(pipe, max_new_tokens=<span class="n">50</span>,
@@ -729,6 +772,14 @@ print(report.summary())</pre>
       <li>Опциональное <b>динамическое обновление</b> переэнкодирует когнитивные токены во время
         длинных генераций (по гейту косинусной близости).</li>
     </ol>
+<pre>metadeploy export --run-dir runs/my            <span class="c"># обвязка → doubter_sidecar.gguf</span>
+
+<span class="c"># двухпроходный инференс в форке llama.cpp (CPU, без PyTorch):</span>
+META_SIDECAR=doubter_sidecar.gguf META_LAYERS=16,17,18,19,20,21,22,23 \
+META_PROMPT=<span class="s">"What is the capital of France?"</span> \
+  ./build/bin/llama-meta-generate -m base.Q4_K_M.gguf -c 2048 -t 4</pre>
+    <p>Сборка форка и примера <code>llama-meta-generate</code> — по README пакета
+      <code>meta-deploy</code> (<code>llama_patch/</code> к базе llama.cpp <code>b9619</code>).</p>
     <div class="note"><b>Робастность.</b> Сигнал самооценки переживает 4-битное сжатие: поведение
       (отказ / ответ) держится вплоть до <code>Q4_K_M</code> с пренебрежимо малой потерей.</div>
   </section>
