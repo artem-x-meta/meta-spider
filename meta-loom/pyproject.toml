@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meta-loom"
+version = "0.0.1"
+description = "Meta-Loom — training + benchmark-evaluation pipeline for meta-attention: Trainer, collector, losses, BaselineComparison (QA), AgentComparison (agentic, on Meta-Agent), harness, LLM-judge. Depends on Meta-Core + Meta-Agent."
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Reflexion Core contributors" }]
+keywords = ["llm", "introspection", "meta-attention", "training", "evaluation"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Loom builds on top of the core. Heavy train/eval deps are optional.
+dependencies = [
+    "meta-core",
+    "meta-agent",
+    "numpy>=1.24",
+]
+
+[project.scripts]
+metaloom = "meta_loom.cli.main:main"
+
+[project.optional-dependencies]
+train = [
+    # "transformers>=4.40",
+    # "datasets>=2.18",
+    # "tqdm>=4.66",
+]
+eval = [
+    # "requests>=2.31",
+    # "python-dotenv>=1.0",
+]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+include = ["meta_loom*"]
+exclude = ["tests*"]

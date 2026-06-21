@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meta-core"
+version = "0.0.1"
+description = "Meta-Core — meta-attention inference primitives: frozen base + trainable wrapper (two-pass pipeline, hooks, cross-attention, encoders, modifiers, dynamic). Checkpoint format contract. No training/benchmarks."
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Reflexion Core contributors" }]
+keywords = ["llm", "introspection", "meta-attention", "inference"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Core: inference primitives only. No transformers/datasets/judge.
+dependencies = [
+    "torch>=2.1",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+include = ["meta_core*"]
+exclude = ["tests*"]

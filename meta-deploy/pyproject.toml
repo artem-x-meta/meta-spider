@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meta-deploy"
+version = "0.0.1"
+description = "Train in PyTorch, deploy in llama.cpp: export a Meta-Spider Doubter (encoder + BottleneckCA) to a GGUF sidecar + ggml/C++ forward for CPU/Metal/edge inference."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Reflexion Core contributors" },
+]
+keywords = ["llm", "llama.cpp", "ggml", "gguf", "meta-attention", "deployment", "quantization"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# The export side is lightweight: numpy + gguf-writer. torch is only needed to read the .pt
+# of the trained sidecar (comes with meta-core). The C++ forward (ggml) is built separately — see cpp/.
+dependencies = ["numpy>=1.24", "gguf>=0.9"]
+
+# CLI: `metadeploy export` (checkpoint/run-dir → GGUF sidecar), `metadeploy validate` (numpy↔torch).
+[project.scripts]
+metadeploy = "meta_deploy.cli:main"
+
+[project.optional-dependencies]
+# torch — read the trained checkpoint.pt (load_state); usually already present with meta-core.
+torch = ["torch>=2.1"]
+dev = ["pytest>=7.4", "scipy>=1.10"]
+
+[project.urls]
+Homepage = "https://github.com/Imperius/reflexion-core"
+Documentation = "https://github.com/Imperius/reflexion-core/tree/main/meta-spider-framework/meta-deploy"
+
+[tool.setuptools.packages.find]
+include = ["meta_deploy*"]
+exclude = ["tests*", "cpp*", "results*"]

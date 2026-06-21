@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meta-spider"
+version = "0.0.1"
+description = "Meta-attention toolkit: pluggable cognitive modifiers (Doubter, Watchdog) for any HuggingFace causal LM"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [
+    { name = "Reflexion Core contributors" },
+]
+keywords = ["llm", "introspection", "meta-attention", "interpretability", "alignment"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# Umbrella shim: re-exports Meta-Core + Meta-Loom (backward compatibility for the
+# top-level API `from meta_spider import ...`). The real code lives in the meta-core / meta-loom packages.
+dependencies = [
+    "meta-core",
+    "meta-loom",
+]
+
+[project.optional-dependencies]
+# eval-only quickstart: LLM judge via OpenRouter (Level 4)
+eval = [
+    # "requests>=2.31",
+    # "python-dotenv>=1.0",
+]
+# train: extra deps for training modifiers (Level 3)
+train = [
+    # "tqdm>=4.66",
+    # "transformers>=4.40",
+]
+dev = [
+    "pytest>=7.4",
+    # "ruff>=0.5",
+    # "mypy>=1.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/Imperius/reflexion-core"
+Documentation = "https://github.com/Imperius/reflexion-core/tree/main/meta-spider-framework"
+
+[tool.setuptools.packages.find]
+include = ["meta_spider*"]
+exclude = ["tests*", "examples*"]

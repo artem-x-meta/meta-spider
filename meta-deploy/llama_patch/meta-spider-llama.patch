@@ -1,0 +1,426 @@
+diff --git a/examples/CMakeLists.txt b/examples/CMakeLists.txt
+index 39f802d..0d6ff22 100644
+--- a/examples/CMakeLists.txt
++++ b/examples/CMakeLists.txt
+@@ -18,6 +18,8 @@ else()
+     add_subdirectory(debug)
+     add_subdirectory(embedding)
+     add_subdirectory(eval-callback)
++    add_subdirectory(extract-activations)
++    add_subdirectory(meta-generate)
+ 
+     add_subdirectory(gguf-hash)
+     add_subdirectory(gguf)
+diff --git a/include/llama.h b/include/llama.h
+index 27e4806..c06559b 100644
+--- a/include/llama.h
++++ b/include/llama.h
+@@ -699,6 +699,26 @@ extern "C" {
+                          int32_t   il_start,
+                          int32_t   il_end);
+ 
++    // meta-spider Doubter: substitute cvec with the meta adapter (CA injection from a GGUF sidecar).
++    LLAMA_API int32_t llama_set_meta_adapter(
++            struct llama_context * ctx,
++                      const char * sidecar_path);
++
++    // Set cognitive tokens (after Pass-1): data = [n_cog * n_embd] f32 (per token).
++    LLAMA_API int32_t llama_set_meta_cog(
++            struct llama_context * ctx,
++                     const float * data,
++                         int32_t   n_cog,
++                         int32_t   n_embd);
++
++    // Built-in encoder: acts [n_layers*n_embd] (per layer) → cog (writes internally,
++    // enables injection). No subprocess — for dynamic refresh during generation.
++    LLAMA_API int32_t llama_meta_encode(
++            struct llama_context * ctx,
++                     const float * acts,
++                         int32_t   n_layers,
++                         int32_t   n_embd);
++
+     //
+     // Memory
+     //
+diff --git a/src/llama-adapter.cpp b/src/llama-adapter.cpp
+index 3e0fe66..7d4fbc3 100644
+--- a/src/llama-adapter.cpp
++++ b/src/llama-adapter.cpp
+@@ -4,10 +4,16 @@
+ #include "llama-mmap.h"
+ #include "llama-model.h"
+ 
++#include "gguf.h"
++#include "ggml-backend.h"
++#include "ggml-alloc.h"
++
+ #include <map>
+ #include <cassert>
++#include <cmath>
+ #include <sstream>
+ #include <stdexcept>
++#include <algorithm>
+ 
+ // vec
+ 
+@@ -495,3 +501,211 @@ const llama_token * llama_adapter_get_alora_invocation_tokens(const llama_adapte
+     GGML_ASSERT(adapter);
+     return adapter->alora_invocation_tokens.data();
+ }
++
++// =====================================================================
++// llama_adapter_meta — meta-spider Doubter (cross-attention injection)
++// =====================================================================
++
++bool llama_adapter_meta::is_cross(int il) const {
++    return std::find(cross_layers.begin(), cross_layers.end(), il) != cross_layers.end();
++}
++
++bool llama_adapter_meta::load(const char * path) {
++    // 1. Open the sidecar with the data (CPU)
++    ggml_context * src = nullptr;
++    gguf_init_params gp = { /*no_alloc*/ false, /*ctx*/ &src };
++    gguf_context * g = gguf_init_from_file(path, gp);
++    if (!g) { LLAMA_LOG_ERROR("%s: failed to open sidecar %s\n", __func__, path); return false; }
++
++    auto geti = [&](const char * k, int def) {
++        int64_t id = gguf_find_key(g, k);
++        return id < 0 ? def : (int) gguf_get_val_u32(g, id);
++    };
++    n_embd_m   = geti("meta_spider.hidden_dim", 0);
++    bottleneck = geti("meta_spider.bottleneck_dim", 256);
++    n_cog      = geti("meta_spider.num_cognitive_tokens", 8);
++    n_head     = geti("meta_spider.ca_num_heads", 8);
++    head_dim   = bottleneck / n_head;
++
++    // 2. Collect ca.<il>.* tensors; cross_layers — derived from names
++    std::vector<std::pair<std::string, ggml_tensor *>> to_copy;  // destination_name, src
++    int64_t nt = gguf_get_n_tensors(g);
++    std::map<ggml_backend_buffer_type_t, int> dummy;
++    // create wctx (no_alloc) for the duplicates
++    ggml_init_params wp = { (size_t)(nt + 4) * ggml_tensor_overhead(), nullptr, /*no_alloc*/ true };
++    wctx.reset(ggml_init(wp));
++    for (int64_t i = 0; i < nt; ++i) {
++        std::string name = gguf_get_tensor_name(g, i);
++        ggml_tensor * s = ggml_get_tensor(src, name.c_str());
++        if (name.rfind("ca.", 0) == 0) {
++            // ca.<il>.<rest>
++            size_t p1 = name.find('.', 3);
++            if (p1 == std::string::npos) continue;
++            int il = atoi(name.substr(3, p1 - 3).c_str());
++            std::string rest = name.substr(p1 + 1);
++            if (!is_cross(il)) cross_layers.push_back(il);
++            ggml_tensor * d = ggml_dup_tensor(wctx.get(), s);
++            ggml_set_name(d, name.c_str());
++            ca[il][rest] = d;
++            to_copy.emplace_back(name, s);
++        } else if (name.rfind("enc.", 0) == 0) {
++            // enc.<rest> — weights of the built-in encoder
++            std::string rest = name.substr(4);
++            ggml_tensor * d = ggml_dup_tensor(wctx.get(), s);
++            ggml_set_name(d, name.c_str());
++            enc[rest] = d;
++            to_copy.emplace_back(name, s);
++        }
++    }
++    { int64_t kid = gguf_find_key(g, "meta_spider.enc_num_heads");
++      if (kid >= 0) enc_n_head = (int) gguf_get_val_u32(g, kid); }
++    { int64_t kid = gguf_find_key(g, "meta_spider.encoder_type");
++      if (kid >= 0) enc_type = gguf_get_val_str(g, kid); }
++
++    // 3. cog tensor [n_embd, n_cog]
++    ggml_init_params cp = { 2 * ggml_tensor_overhead(), nullptr, true };
++    cctx.reset(ggml_init(cp));
++    cog = ggml_new_tensor_2d(cctx.get(), GGML_TYPE_F32, n_embd_m, n_cog);
++    ggml_set_name(cog, "meta.cog");
++
++    // 4. Allocate in the CPU backend buffer + copy the data
++    ggml_backend_buffer_type_t buft = ggml_backend_cpu_buffer_type();
++    ggml_backend_buffer_t wb = ggml_backend_alloc_ctx_tensors_from_buft(wctx.get(), buft);
++    ggml_backend_buffer_t cb = ggml_backend_alloc_ctx_tensors_from_buft(cctx.get(), buft);
++    if (!wb || !cb) { LLAMA_LOG_ERROR("%s: alloc buffer fail\n", __func__); return false; }
++    wbuf.reset(wb); cbuf.reset(cb);
++    for (auto & pr : to_copy) {
++        ggml_tensor * d = ggml_get_tensor(wctx.get(), pr.first.c_str());
++        ggml_backend_tensor_set(d, pr.second->data, 0, ggml_nbytes(pr.second));
++    }
++    ggml_backend_buffer_clear(cb, 0);
++
++    // 5. gate → tanh (host-side, from the copied data)
++    for (int il : cross_layers) {
++        float raw = ((float *) ca[il]["gate"]->data)[0];
++        gate_tanh[il] = tanhf(raw);
++    }
++
++    std::sort(cross_layers.begin(), cross_layers.end());
++    LLAMA_LOG_INFO("%s: meta-adapter loaded: n_embd=%d bn=%d n_cog=%d n_head=%d layers=%zu\n",
++                   __func__, n_embd_m, bottleneck, n_cog, n_head, cross_layers.size());
++    gguf_free(g);
++    ggml_free(src);
++    return true;
++}
++
++void llama_adapter_meta::set_cog(const float * data, int n_cog_in, int n_embd_in) {
++    GGML_ASSERT(n_cog_in == n_cog && n_embd_in == n_embd_m);
++    ggml_backend_tensor_set(cog, data, 0, (size_t) n_cog * n_embd_m * sizeof(float));
++    cog_ready = true;  // enable injection for Pass-2
++}
++
++bool llama_adapter_meta::encode(const float * acts, int n_layers, int n_embd_in) {
++    GGML_ASSERT(n_embd_in == n_embd_m);
++    const int hd = bottleneck / enc_n_head;
++    if (!enc_backend) enc_backend.reset(ggml_backend_cpu_init());
++
++    ggml_init_params cp = { (size_t) 4096 * ggml_tensor_overhead() + ggml_graph_overhead(), nullptr, true };
++    ggml_context * c = ggml_init(cp);
++    auto E = [&](const std::string & n) { return enc.at(n); };
++    auto LN = [&](ggml_tensor * x, const std::string & p) {
++        return ggml_add(c, ggml_mul(c, ggml_norm(c, x, 1e-5f), E(p+".weight")), E(p+".bias")); };
++    auto LIN = [&](ggml_tensor * x, const std::string & p) {
++        return ggml_add(c, ggml_mul_mat(c, E(p+".weight"), x), E(p+".bias")); };
++
++    ggml_tensor * in_acts = ggml_new_tensor_2d(c, GGML_TYPE_F32, n_embd_m, n_layers);
++    ggml_set_input(in_acts);
++    // ── encoder: selective (current) or multi_token (legacy) → pre[bn, n_cog] ──
++    ggml_tensor * pre = nullptr;
++    if (enc_type == "selective") {
++        // SelectiveEncoder: per-layer projector + scalar gate tanh(layer_gates.i); WITHOUT MHA
++        // (1:1 layer→cognitive token). Verified against PyTorch/numpy (meta_deploy/spec.selective_forward).
++        for (int i = 0; i < n_layers; ++i) {
++            ggml_tensor * a = ggml_cont(c, ggml_view_2d(c, in_acts, n_embd_m, 1, in_acts->nb[1], (size_t) i*in_acts->nb[1]));
++            char pfx[64]; snprintf(pfx, sizeof(pfx), "layer_projectors.%d", i);
++            ggml_tensor * p = ggml_gelu_erf(c, LIN(LN(a, std::string(pfx)+".0"), std::string(pfx)+".1"));
++            char gk[64]; snprintf(gk, sizeof(gk), "layer_gates.%d", i);
++            float graw = ((const float *) E(gk)->data)[0];   // scalar gate from host (wbuf)
++            p = ggml_scale(c, p, tanhf(graw));
++            pre = pre ? ggml_concat(c, pre, p, 1) : p;        // [bn, n_layers == n_cog]
++        }
++    } else {
++        // multi_token (legacy): projectors → kv[bn,n_layers]; cross-attention queries × kv
++        ggml_tensor * kv = nullptr;
++        for (int i = 0; i < n_layers; ++i) {
++            ggml_tensor * a = ggml_cont(c, ggml_view_2d(c, in_acts, n_embd_m, 1, in_acts->nb[1], (size_t) i*in_acts->nb[1]));
++            char pfx[64]; snprintf(pfx, sizeof(pfx), "layer_projectors.%d", i);
++            ggml_tensor * p = ggml_gelu_erf(c, LIN(LN(a, std::string(pfx)+".0"), std::string(pfx)+".1"));
++            kv = kv ? ggml_concat(c, kv, p, 1) : p;
++        }
++        ggml_tensor * q = E("queries");
++        ggml_tensor * iw = E("cross_attn.in_proj_weight"), * ib = E("cross_attn.in_proj_bias");
++        auto vw = [&](ggml_tensor * w, int blk) { return ggml_view_2d(c, w, bottleneck, bottleneck, w->nb[1], (size_t) blk*bottleneck*w->nb[1]); };
++        auto vb = [&](ggml_tensor * b, int blk) { return ggml_view_1d(c, b, bottleneck, (size_t) blk*bottleneck*b->nb[0]); };
++        ggml_tensor * Q = ggml_add(c, ggml_mul_mat(c, ggml_cont(c, vw(iw,0)), q),  vb(ib,0));
++        ggml_tensor * K = ggml_add(c, ggml_mul_mat(c, ggml_cont(c, vw(iw,1)), kv), vb(ib,1));
++        ggml_tensor * V = ggml_add(c, ggml_mul_mat(c, ggml_cont(c, vw(iw,2)), kv), vb(ib,2));
++        Q = ggml_cont(c, ggml_permute(c, ggml_reshape_3d(c, Q, hd, enc_n_head, n_cog),      0,2,1,3));
++        K = ggml_cont(c, ggml_permute(c, ggml_reshape_3d(c, K, hd, enc_n_head, n_layers),   0,2,1,3));
++        ggml_tensor * kq = ggml_soft_max_ext(c, ggml_mul_mat(c, K, Q), nullptr, 1.0f/sqrtf((float)hd), 0.0f);
++        ggml_tensor * Vp = ggml_cont(c, ggml_permute(c, ggml_reshape_3d(c, V, hd, enc_n_head, n_layers), 1,2,0,3));
++        pre = ggml_reshape_2d(c, ggml_cont(c, ggml_permute(c, ggml_mul_mat(c, Vp, kq), 0,2,1,3)), bottleneck, n_cog);
++        pre = ggml_add(c, ggml_mul_mat(c, E("cross_attn.out_proj.weight"), pre), E("cross_attn.out_proj.bias"));
++    }
++    // output_proj + output_norm (shared tail of both encoders)
++    ggml_tensor * x = LN(pre, "output_proj.0");
++    x = LIN(x, "output_proj.1");
++    x = ggml_gelu_erf(c, x);
++    x = LIN(x, "output_proj.3");
++    x = LN(x, "output_norm");                                  // [n_embd, n_cog]
++    ggml_set_output(x);
++
++    ggml_cgraph * gf = ggml_new_graph(c);
++    ggml_build_forward_expand(gf, x);
++    ggml_gallocr_t ga = ggml_gallocr_new(ggml_backend_get_default_buffer_type(enc_backend.get()));
++    bool ok = ggml_gallocr_alloc_graph(ga, gf);
++    if (ok) {
++        ggml_backend_tensor_set(in_acts, acts, 0, (size_t) n_embd_m * n_layers * sizeof(float));
++        ok = ggml_backend_graph_compute(enc_backend.get(), gf) == GGML_STATUS_SUCCESS;
++    }
++    if (ok) {
++        std::vector<float> buf((size_t) n_embd_m * n_cog);
++        ggml_backend_tensor_get(x, buf.data(), 0, buf.size()*sizeof(float));
++        set_cog(buf.data(), n_cog, n_embd_m);
++    }
++    ggml_gallocr_free(ga);
++    ggml_free(c);
++    return ok;
++}
++
++ggml_tensor * llama_adapter_meta::apply_to(ggml_context * ctx, ggml_tensor * cur, int il) const {
++    // ALWAYS build the CA operations (do not gate on cog_ready), otherwise when llama.cpp
++    // reuses the graph, Pass-2 would take the Pass-1 graph built WITHOUT injection. In Pass-1
++    // cog=zeros → K,V=0 → CA output=0 → cur+gate·0=cur (numerically clean). cog_ready is kept
++    // as an indicator, but does not change the topology.
++    if (!is_cross(il)) return cur;
++    const auto & w = ca.at(il);
++    auto W = [&](const char * n) { return w.at(n); };
++
++    const int seq = (int) cur->ne[1];
++    // h = LN(cur)
++    ggml_tensor * h = ggml_add(ctx, ggml_mul(ctx, ggml_norm(ctx, cur, 1e-5f),
++                               W("norm.weight")), W("norm.bias"));
++    ggml_tensor * hc = ggml_mul_mat(ctx, W("down_proj.weight"), h);   // [bn, seq]
++    ggml_tensor * Q  = ggml_mul_mat(ctx, W("q_proj.weight"), hc);     // [bn, seq]
++    ggml_tensor * K  = ggml_mul_mat(ctx, W("k_proj.weight"), cog);    // [bn, n_cog]
++    ggml_tensor * V  = ggml_mul_mat(ctx, W("v_proj.weight"), cog);    // [bn, n_cog]
++
++    Q = ggml_cont(ctx, ggml_permute(ctx, ggml_reshape_3d(ctx, Q, head_dim, n_head, seq),   0, 2, 1, 3));
++    K = ggml_cont(ctx, ggml_permute(ctx, ggml_reshape_3d(ctx, K, head_dim, n_head, n_cog), 0, 2, 1, 3));
++    ggml_tensor * kq = ggml_mul_mat(ctx, K, Q);                       // [n_cog, seq, n_head]
++    kq = ggml_scale(ctx, kq, 1.0f / sqrtf((float) head_dim));
++    kq = ggml_add(ctx, kq, W("token_preference"));                   // bias broadcast
++    kq = ggml_soft_max(ctx, kq);
++    ggml_tensor * Vp = ggml_cont(ctx, ggml_permute(ctx, ggml_reshape_3d(ctx, V, head_dim, n_head, n_cog), 1, 2, 0, 3));
++    ggml_tensor * kqv = ggml_mul_mat(ctx, Vp, kq);                    // [head_dim, seq, n_head]
++    kqv = ggml_cont(ctx, ggml_permute(ctx, kqv, 0, 2, 1, 3));        // [head_dim, n_head, seq]
++    ggml_tensor * att = ggml_reshape_2d(ctx, kqv, bottleneck, seq);   // [bn, seq]
++    ggml_tensor * out = ggml_mul_mat(ctx, W("up_proj.weight"), att);  // [n_embd, seq]
++    return ggml_add(ctx, cur, ggml_scale(ctx, out, gate_tanh.at(il)));
++}
+diff --git a/src/llama-adapter.h b/src/llama-adapter.h
+index f0b1e50..b7b7cc8 100644
+--- a/src/llama-adapter.h
++++ b/src/llama-adapter.h
+@@ -15,9 +15,12 @@
+ //
+ 
+ struct llama_adapter_cvec {
++    virtual ~llama_adapter_cvec() = default;
++
+     ggml_tensor * tensor_for(int il) const;
+ 
+-    ggml_tensor * apply_to(ggml_context * ctx, ggml_tensor * cur, int  il) const;
++    // virtual: the meta-spider adapter (llama_adapter_meta) overrides this for CA injection
++    virtual ggml_tensor * apply_to(ggml_context * ctx, ggml_tensor * cur, int  il) const;
+ 
+     bool apply(
+             const llama_model & model,
+@@ -27,7 +30,7 @@ struct llama_adapter_cvec {
+             int32_t il_start,
+             int32_t il_end);
+ 
+-private:
++protected:
+     bool init(const llama_model & model);
+ 
+     int32_t layer_start = -1;
+@@ -41,6 +44,51 @@ private:
+ 
+ using llama_adapter_cvec_ptr = std::shared_ptr<llama_adapter_cvec>;
+ 
++//
++// llama_adapter_meta — meta-spider Doubter: cross-attention injection of cognitive tokens
++// into the residual stream of selected layers (mechanics like a control-vector hook, but
++// instead of a static vector — an input-dependent BottleneckCrossAttention). Weights from a
++// GGUF sidecar. Substitutes cvec in the context (polymorphically via apply_to). Target CPU.
++//
++
++struct llama_adapter_meta : llama_adapter_cvec {
++    // Load CA weights from a GGUF sidecar (ca.<layer>.*) + parse the metadata.
++    bool load(const char * sidecar_path);
++
++    // Set cognitive tokens (after Pass-1): data = [n_cog * n_embd] row-major (per token).
++    void set_cog(const float * data, int n_cog_in, int n_embd_in);
++
++    // Run the built-in encoder: acts [n_layers * n_embd] (per layer) → cognitive tokens
++    // (writes directly into the cog tensor, enables injection). No subprocess — for dynamic refresh.
++    bool encode(const float * acts, int n_layers, int n_embd_in);
++
++    // CA injection for cross_attn layers; otherwise the residual is unchanged.
++    ggml_tensor * apply_to(ggml_context * ctx, ggml_tensor * cur, int il) const override;
++
++private:
++    int n_embd_m = 0, bottleneck = 0, n_cog = 0, n_head = 0, head_dim = 0;
++    std::vector<int> cross_layers;                 // {6,12,18,24}
++
++    ggml_context_ptr wctx;                          // CA weights (from sidecar, in backend buffer)
++    ggml_backend_buffer_ptr wbuf;
++    ggml_context_ptr cctx;                          // cog tensor
++    ggml_backend_buffer_ptr cbuf;
++
++    ggml_tensor * cog = nullptr;                    // [n_embd, n_cog]
++    bool cog_ready = false;                          // Pass-1 clean (no inject) until cog is set
++    // per cross_attn layer: name→tensor (norm/down/q/k/v/up/token_preference) + tanh(gate)
++    std::unordered_map<int, std::unordered_map<std::string, ggml_tensor *>> ca;
++    std::unordered_map<int, float> gate_tanh;
++
++    // built-in encoder (enc.<key> → tensor) for encode()/dynamic refresh
++    std::unordered_map<std::string, ggml_tensor *> enc;
++    int enc_n_head = 8;
++    std::string enc_type = "multi_token";  // 'selective' (current) | 'multi_token' (legacy)
++    ggml_backend_ptr enc_backend;  // CPU backend for the encode graph
++
++    bool is_cross(int il) const;
++};
++
+ //
+ // llama_adapter_lora
+ //
+diff --git a/src/llama-context.cpp b/src/llama-context.cpp
+index 168dbab..645660b 100644
+--- a/src/llama-context.cpp
++++ b/src/llama-context.cpp
+@@ -1297,6 +1297,30 @@ bool llama_context::set_adapter_cvec(
+     return res;
+ }
+ 
++bool llama_context::set_meta_adapter(const char * sidecar_path) {
++    auto meta = std::make_shared<llama_adapter_meta>();
++    if (!meta->load(sidecar_path)) {
++        LLAMA_LOG_ERROR("%s: failed to load meta sidecar %s\n", __func__, sidecar_path);
++        return false;
++    }
++    cvec = meta;  // polymorphic substitution: the graph calls cvec->apply_to → CA injection
++    sched_need_reserve = true;
++    return true;
++}
++
++bool llama_context::set_meta_cog(const float * data, int32_t n_cog, int32_t n_embd) {
++    auto * meta = dynamic_cast<llama_adapter_meta *>(cvec.get());
++    if (!meta) { LLAMA_LOG_ERROR("%s: meta adapter not set\n", __func__); return false; }
++    meta->set_cog(data, n_cog, n_embd);
++    return true;
++}
++
++bool llama_context::meta_encode(const float * acts, int32_t n_layers, int32_t n_embd) {
++    auto * meta = dynamic_cast<llama_adapter_meta *>(cvec.get());
++    if (!meta) { LLAMA_LOG_ERROR("%s: meta adapter not set\n", __func__); return false; }
++    return meta->encode(acts, n_layers, n_embd);
++}
++
+ llm_graph_result * llama_context::process_ubatch(const llama_ubatch & ubatch, llm_graph_type gtype, llama_memory_context_i * mctx, ggml_status & ret) {
+     if (mctx && !mctx->apply()) {
+         LLAMA_LOG_ERROR("%s: failed to apply memory context\n", __func__);
+@@ -3812,6 +3836,18 @@ int32_t llama_set_adapter_cvec(
+     return res ? 0 : -1;
+ }
+ 
++int32_t llama_set_meta_adapter(llama_context * ctx, const char * sidecar_path) {
++    return ctx->set_meta_adapter(sidecar_path) ? 0 : -1;
++}
++
++int32_t llama_set_meta_cog(llama_context * ctx, const float * data, int32_t n_cog, int32_t n_embd) {
++    return ctx->set_meta_cog(data, n_cog, n_embd) ? 0 : -1;
++}
++
++int32_t llama_meta_encode(llama_context * ctx, const float * acts, int32_t n_layers, int32_t n_embd) {
++    return ctx->meta_encode(acts, n_layers, n_embd) ? 0 : -1;
++}
++
+ //
+ // memory
+ //
+diff --git a/src/llama-context.h b/src/llama-context.h
+index 853052b..08a9077 100644
+--- a/src/llama-context.h
++++ b/src/llama-context.h
+@@ -129,6 +129,11 @@ struct llama_context {
+                 int32_t   il_start,
+                 int32_t   il_end);
+ 
++    // meta-spider: substitute cvec with the meta adapter (CA injection) + set cog tokens
++    bool set_meta_adapter(const char * sidecar_path);
++    bool set_meta_cog(const float * data, int32_t n_cog, int32_t n_embd);
++    bool meta_encode(const float * acts, int32_t n_layers, int32_t n_embd);
++
+     // process a single ubatch with a specific graph type
+     // if memory_context is provided, it will be applied first to the context's memory
+     // ret contains the status of the graph computation
