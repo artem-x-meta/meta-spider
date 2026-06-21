@@ -51,6 +51,8 @@
   h3{font-size:18px;margin:1.4em 0 .4em;color:var(--accent2)}
   p,li{color:#d4d9e2}
   .lead{font-size:18px;color:var(--muted);margin:.2em 0 1em}
+  .diagram{display:block;width:100%;max-width:860px;margin:20px auto;border:1px solid var(--line);
+    border-radius:10px;background:#11141b}
   section{scroll-margin-top:72px}
   ul{padding-left:22px}
   pre{background:var(--code);border:1px solid var(--line);border-radius:10px;
@@ -170,6 +172,7 @@
     <span class="pill">frozen base</span><span class="pill">cross-attention</span>
     <span class="pill">selective prediction</span><span class="pill">QLoRA-style nf4</span>
     <span class="pill">llama.cpp deploy</span>
+    <img class="diagram" src="assets/workflow-en.svg" alt="The whole pipeline: collect, train, eval, then agent or deploy">
   </section>
 
   <section id="install">
@@ -219,6 +222,7 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
 
   <section id="how-it-works">
     <h2>How it works</h2>
+    <img class="diagram" src="assets/two-pass-en.svg" alt="Two-pass injection: Pass 1 reads activations, Pass 2 injects cognitive tokens">
     <p>One run = <b>two forward passes of the same frozen model</b>.</p>
 <pre><span class="c">Pass 1 (read):  text → frozen LLM → hooks capture last-token hidden states</span>
 <span class="c">                → cognitive encoder → cognitive tokens (one per layer) → buffer</span>
@@ -236,6 +240,7 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
 
   <section id="architecture">
     <h2>Architecture: four packages</h2>
+    <img class="diagram" src="assets/packages-en.svg" alt="Four packages: meta-core shared by meta-loom, meta-agent, meta-deploy">
     <p>The framework is <b>four pip packages</b> under <code>meta-spider-framework/</code>, each
       with a single job and a clean dependency graph — you install only what you need.</p>
     <table>
@@ -291,6 +296,7 @@ meta-deploy →  meta-core               <span class="c"># export wrapper → ll
 
   <section id="components">
     <h2>Core components</h2>
+    <img class="diagram" src="assets/components-en.svg" alt="Components: activation hooks, cognitive encoder, gates, meta-attention heads">
     <table>
       <tr><th>Component</th><th>Role</th></tr>
       <tr><td><code>ActivationCollector</code></td><td>Forward hooks on target layers; capture
@@ -337,6 +343,8 @@ meta-deploy →  meta-core               <span class="c"># export wrapper → ll
 
   <section id="training">
     <h2>Training a Doubter</h2>
+    <img class="diagram" src="assets/training-en.svg" alt="Training: collector + oracle, then forward/backward through the frozen base">
+    <img class="diagram" src="assets/caching-en.svg" alt="Time saved by caching: collect-once, slice, inference KV-cache">
     <p>Training is two stages: collect activations once (cached), then train the wrapper.</p>
 <pre><span class="k">from</span> meta_spider <span class="k">import</span> (ActivationDatasetCollector, Doubter, DoubterConfig,
                          Trainer, TrainerConfig)
@@ -367,6 +375,7 @@ doubter.save_checkpoint(<span class="s">"doubter.pt"</span>)</pre>
 
   <section id="evaluation">
     <h2>Evaluation &amp; metrics</h2>
+    <img class="diagram" src="assets/metrics-en.svg" alt="Where the metrics come from: the 2x2 of outcomes">
     <p><code>BaselineComparison</code> runs base vs. modified on the same benchmark and reports
       <b>honest</b> calibration metrics with statistical tests (McNemar, paired-t).</p>
 <pre><span class="k">from</span> meta_loom <span class="k">import</span> BaselineComparison, QABenchmark, BenchmarkTask
@@ -476,6 +485,7 @@ print(report.summary())</pre>
     <span class="pill">замороженная база</span><span class="pill">cross-attention</span>
     <span class="pill">селективное предсказание</span><span class="pill">QLoRA-style nf4</span>
     <span class="pill">деплой в llama.cpp</span>
+    <img class="diagram" src="assets/workflow-ru.svg" alt="Весь конвейер: collect, train, eval, затем агент или деплой">
   </section>
 
   <section id="install-ru">
@@ -525,6 +535,7 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
 
   <section id="how-it-works-ru">
     <h2>Как это работает</h2>
+    <img class="diagram" src="assets/two-pass-ru.svg" alt="Двухпроходная инъекция: Pass 1 читает активации, Pass 2 впрыскивает токены">
     <p>Один запуск = <b>два прямых прохода одной замороженной модели</b>.</p>
 <pre><span class="c">Проход 1 (чтение): текст → замороженная LLM → хуки ловят hidden state последнего токена</span>
 <span class="c">                   → когнитивный энкодер → когнитивные токены (по одному на слой) → буфер</span>
@@ -541,6 +552,7 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
 
   <section id="architecture-ru">
     <h2>Архитектура: четыре пакета</h2>
+    <img class="diagram" src="assets/packages-ru.svg" alt="Четыре пакета: meta-core как общее ядро + три потребителя">
     <p>Фреймворк — это <b>четыре pip-пакета</b> внутри <code>meta-spider-framework/</code>, у каждого
       одна задача и чистый граф зависимостей — ставите только то, что нужно.</p>
     <table>
@@ -600,6 +612,7 @@ meta-deploy →  meta-core               <span class="c"># экспорт обв
 
   <section id="components-ru">
     <h2>Компоненты ядра</h2>
+    <img class="diagram" src="assets/components-ru.svg" alt="Компоненты: хуки активаций, когнитивный энкодер, врата, головы мета-внимания">
     <table>
       <tr><th>Компонент</th><th>Роль</th></tr>
       <tr><td><code>ActivationCollector</code></td><td>Прямые хуки на целевых слоях; ловит
@@ -648,6 +661,8 @@ meta-deploy →  meta-core               <span class="c"># экспорт обв
 
   <section id="training-ru">
     <h2>Обучение Скептика</h2>
+    <img class="diagram" src="assets/training-ru.svg" alt="Обучение: коллектор + оракул, затем forward/backward сквозь замороженную базу">
+    <img class="diagram" src="assets/caching-ru.svg" alt="Экономия времени кэшированием: collect-кэш, срез, KV-кэш на инференсе">
     <p>Обучение в две стадии: один раз собрать активации (закэшировать), затем обучить обвязку.</p>
 <pre><span class="k">from</span> meta_spider <span class="k">import</span> (ActivationDatasetCollector, Doubter, DoubterConfig,
                          Trainer, TrainerConfig)
@@ -678,6 +693,7 @@ doubter.save_checkpoint(<span class="s">"doubter.pt"</span>)</pre>
 
   <section id="evaluation-ru">
     <h2>Оценка и метрики</h2>
+    <img class="diagram" src="assets/metrics-ru.svg" alt="Откуда берутся метрики: 2×2 исходов">
     <p><code>BaselineComparison</code> гоняет базу против модифицированной на одном бенчмарке и
       выдаёт <b>честные</b> метрики калибровки со статистическими тестами (McNemar, парный t).</p>
 <pre><span class="k">from</span> meta_loom <span class="k">import</span> BaselineComparison, QABenchmark, BenchmarkTask

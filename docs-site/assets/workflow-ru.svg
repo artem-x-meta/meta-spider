@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 440" font-family="-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#8a93a6"/>
+    </marker>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="799" height="439" rx="14" fill="#11141b" stroke="#262b37"/>
+
+  <!-- edges -->
+  <g stroke="#7a8493" stroke-width="1.8" fill="none" marker-end="url(#arr)">
+    <path d="M140,78 L140,148"/>
+    <path d="M140,200 L140,298"/>
+    <path d="M240,174 L456,174"/>
+    <path d="M240,316 L456,306"/>
+    <path d="M240,330 L456,384"/>
+  </g>
+
+  <!-- stage labels -->
+  <g>
+    <text x="153" y="110" fill="#6ea8fe" font-size="13.5" font-weight="600">metaloom collect</text>
+    <text x="153" y="127" fill="#9aa3b2" font-size="11">Pass-1 активации + флаг оракула</text>
+    <text x="153" y="246" fill="#6ea8fe" font-size="13.5" font-weight="600">metaloom train</text>
+    <text x="153" y="263" fill="#9aa3b2" font-size="11">двухпроходный backprop · база заморожена</text>
+    <text x="252" y="166" fill="#6ea8fe" font-size="13.5" font-weight="600">metaloom eval</text>
+  </g>
+
+  <!-- node: данные -->
+  <rect x="40" y="30" width="200" height="48" rx="9" fill="#1a1f29" stroke="#3a4456"/>
+  <text x="140" y="52" fill="#e6e9ef" font-size="14.5" font-weight="600" text-anchor="middle">данные (.jsonl)</text>
+  <text x="140" y="68" fill="#9aa3b2" font-size="11" text-anchor="middle">ваши вопросы + ответы</text>
+
+  <!-- node: run.json -->
+  <rect x="40" y="150" width="200" height="48" rx="9" fill="#182030" stroke="#6ea8fe"/>
+  <text x="140" y="172" fill="#e6e9ef" font-size="14.5" font-weight="600" text-anchor="middle">run.json</text>
+  <text x="140" y="188" fill="#9aa3b2" font-size="11" text-anchor="middle">манифест: модель · слои · данные</text>
+
+  <!-- node: doubter.pt -->
+  <rect x="40" y="300" width="200" height="48" rx="9" fill="#182030" stroke="#6ea8fe"/>
+  <text x="140" y="322" fill="#e6e9ef" font-size="14.5" font-weight="600" text-anchor="middle">doubter.pt</text>
+  <text x="140" y="338" fill="#9aa3b2" font-size="11" text-anchor="middle">обученная обвязка (чекпойнт)</text>
+
+  <!-- node: отчёт -->
+  <rect x="460" y="150" width="300" height="48" rx="9" fill="#1a1f29" stroke="#9aa3b2"/>
+  <text x="476" y="172" fill="#e6e9ef" font-size="14.5" font-weight="600">report.json</text>
+  <text x="476" y="188" fill="#9aa3b2" font-size="11">метрики + стат-тесты</text>
+
+  <!-- node: meta-agent -->
+  <rect x="460" y="284" width="300" height="48" rx="9" fill="#16241f" stroke="#7ee0c0"/>
+  <text x="476" y="306" fill="#e6e9ef" font-size="14.5" font-weight="600">meta-agent run --run-dir</text>
+  <text x="476" y="322" fill="#9aa3b2" font-size="11">агент · чат   (GPU)</text>
+
+  <!-- node: деплой -->
+  <rect x="460" y="360" width="300" height="48" rx="9" fill="#16241f" stroke="#7ee0c0"/>
+  <text x="476" y="382" fill="#e6e9ef" font-size="14.5" font-weight="600">metadeploy export → llama.cpp</text>
+  <text x="476" y="398" fill="#9aa3b2" font-size="11">CPU · Metal · edge   (без PyTorch)</text>
+</svg>
