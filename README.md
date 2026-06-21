@@ -3,6 +3,8 @@
 > Pluggable cognitive modifiers for any HuggingFace causal LM.
 > Architectural introspection via meta-attention — no base fine-tuning.
 
+📖 **Documentation (with diagrams, EN/RU):** [imperius.codeberg.page/meta-spider](https://imperius.codeberg.page/meta-spider/)
+
 ```text
 Text reflection:    model → "think again" → model re-reads text
 Meta-attention:     model → activations → encoder → cognitive tokens
