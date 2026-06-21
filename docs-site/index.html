@@ -445,6 +445,12 @@ META_PROMPT=<span class="s">"What is the capital of France?"</span> \
 
   <section id="api">
     <h2>API reference</h2>
+    <h3>CLI</h3>
+    <ul>
+      <li><code>metaloom collect|train|eval --run-dir &lt;dir&gt;</code> — the training pipeline; stages share a <code>run.json</code> manifest</li>
+      <li><code>meta-agent run --run-dir &lt;dir&gt; "question"</code> — agentic / chat runtime (reads the manifest)</li>
+      <li><code>metadeploy export --run-dir &lt;dir&gt;</code> — export the wrapper to a GGUF sidecar for llama.cpp</li>
+    </ul>
     <h3>Pipeline</h3>
     <ul>
       <li><code>MetaSpiderPipeline.from_pretrained(cfg)</code> — load + freeze base, init collector.</li>
@@ -786,6 +792,12 @@ META_PROMPT=<span class="s">"What is the capital of France?"</span> \
 
   <section id="api-ru">
     <h2>Справочник API</h2>
+    <h3>CLI</h3>
+    <ul>
+      <li><code>metaloom collect|train|eval --run-dir &lt;dir&gt;</code> — конвейер обучения; стадии связаны манифестом <code>run.json</code></li>
+      <li><code>meta-agent run --run-dir &lt;dir&gt; "вопрос"</code> — агентный / чат-рантайм (читает манифест)</li>
+      <li><code>metadeploy export --run-dir &lt;dir&gt;</code> — экспорт обвязки в GGUF-сайдкар для llama.cpp</li>
+    </ul>
     <h3>Pipeline</h3>
     <ul>
       <li><code>MetaSpiderPipeline.from_pretrained(cfg)</code> — загрузка + заморозка базы, инициализация коллектора.</li>
