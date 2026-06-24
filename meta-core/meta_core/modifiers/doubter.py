@@ -390,6 +390,23 @@ class Doubter(Modifier):
     # Diagnostics
     # ============================================================
 
+    def set_gain(self, gain: float) -> None:
+        """v0.2 — set the static injection gain (the uncertainty potentiometer) on EVERY CA layer.
+
+        A single runtime knob over the whole Doubter: gain=1.0 is the trained baseline, >1 amplifies
+        doubt (→ more refusal), <1 attenuates, <0 inverts toward confidence. Composes with the trained
+        per-layer gates and with AGC. Validated monotonic range ~[0, 1.5] before runaway
+        (docs/results/gemma-4-12b/gain-potentiometer.md). Set at inference; not trained.
+        """
+        for m in self.ca_modules.values():
+            m.set_gain(gain)
+
+    def get_gain(self) -> float:
+        """Current static injection gain (assumes uniform across layers; returns the first)."""
+        for m in self.ca_modules.values():
+            return float(m.gain)
+        return 1.0
+
     def get_ca_gate_map(self) -> dict[int, float]:
         """tanh(gate) on each CA layer — the 'cognitive injection map'.
 

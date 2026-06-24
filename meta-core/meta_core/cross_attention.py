@@ -101,6 +101,14 @@ class BottleneckCrossAttention(nn.Module):
         self._last_agc_align: float | None = None
         self._agc_diag: dict | None = None
 
+        # v0.2 — STATIC GAIN (the uncertainty potentiometer). A runtime multiplier on the
+        # injection strength: gain=1.0 → trained baseline; >1 amplify (more doubt → more refusal);
+        # <1 attenuate; <0 invert (push toward confidence). Composes WITH gate and AGC. NOT a
+        # trained parameter — a control knob set at inference. Validated monotonic range ~[0, 1.5]
+        # before positive-feedback runaway (see docs/results/gemma-4-12b/gain-potentiometer.md);
+        # combine with AGC near the ceiling for stability.
+        self.gain: float = 1.0
+
         self._init_weights()
 
     def _init_weights(self) -> None:
@@ -172,7 +180,7 @@ class BottleneckCrossAttention(nn.Module):
             decay = math.exp(-self._gen_step / max(self.agc_tau, 1e-6))
             alpha = self.agc_floor + (1.0 - self.agc_floor) * decay
             self._last_agc_alpha = float(alpha)
-            return residual + (alpha * gate_value) * output
+            return residual + (self.gain * alpha * gate_value) * output
         if self.agc_enabled:
             # measure mode (diagnostics / a future adaptive probe-meter of the level). Candidate
             # measures: drift/out_norm/proj — all turned out NOT to grow (content drowns the doubt
@@ -189,8 +197,15 @@ class BottleneckCrossAttention(nn.Module):
             self._last_agc_alpha = float(alpha.mean())
             self._agc_diag = {"drift": float(drift.mean()), "out_norm": float(out_norm.mean()),
                               "proj": float(proj.mean())}
-            return residual + alpha.unsqueeze(-1).to(output.dtype) * gate_value * output
-        return residual + gate_value * output
+            return residual + (self.gain * alpha.unsqueeze(-1).to(output.dtype)) * gate_value * output
+        return residual + (self.gain * gate_value) * output
+
+    # --- Control (v0.2) ---
+
+    def set_gain(self, gain: float) -> None:
+        """Set the static injection gain (the uncertainty potentiometer). See __init__: gain=1.0
+        is the trained baseline, >1 amplifies, <1 attenuates, <0 inverts toward confidence."""
+        self.gain = float(gain)
 
     # --- Diagnostics ---
 

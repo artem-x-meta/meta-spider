@@ -150,6 +150,26 @@ def test_bottleneck_ca_param_count():
     assert 3000 < n_params < 10000, f"unexpected param count {n_params}"
 
 
+def test_bottleneck_ca_gain_potentiometer():
+    """v0.2 — static gain knob scales the injection linearly; 0 → none, 2 → double, <0 → invert."""
+    B, seq, hidden, num_cog = 2, 4, 64, 8
+    ca = BottleneckCrossAttention(
+        hidden_dim=hidden, bottleneck_dim=16, num_heads=2, num_cognitive_tokens=num_cog,
+    )
+    ca.eval()  # disable attn_dropout for determinism
+    assert ca.gain == 1.0, "default gain must be 1.0 (backward compatible)"
+    h = torch.randn(B, seq, hidden)
+    cog = torch.randn(B, num_cog, hidden)
+    with torch.no_grad():
+        inj1 = ca(h, cog) - h                       # injection at gain=1.0
+        ca.set_gain(0.0)
+        assert torch.allclose(ca(h, cog), h, atol=1e-6), "gain=0 must zero the injection"
+        ca.set_gain(2.0)
+        assert torch.allclose(ca(h, cog) - h, 2.0 * inj1, atol=1e-5), "gain=2 must double injection"
+        ca.set_gain(-1.0)
+        assert torch.allclose(ca(h, cog) - h, -inj1, atol=1e-5), "gain=-1 must invert injection"
+
+
 # ============================================================
 # SelectiveEncoder
 # ============================================================

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meta-deploy"
-version = "0.0.1"
+version = "0.2.0"
 description = "Train in PyTorch, deploy in llama.cpp: export a Meta-Spider Doubter (encoder + BottleneckCA) to a GGUF sidecar + ggml/C++ forward for CPU/Metal/edge inference."
 readme = "README.md"
 requires-python = ">=3.10"

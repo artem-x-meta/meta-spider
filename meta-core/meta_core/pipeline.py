@@ -286,6 +286,17 @@ class MetaSpiderPipeline:
         self.modifiers.clear()
         return snapshot
 
+    def set_gain(self, gain: float) -> int:
+        """v0.2 — set the static injection gain (potentiometer) on every attached modifier that
+        supports it. The mixing-console fader: dial each behaviour channel's strength at inference.
+        gain=1.0 baseline, >1 amplify, <1 attenuate, <0 invert. Returns how many modifiers were set."""
+        n = 0
+        for m in self.modifiers:
+            if hasattr(m, "set_gain"):
+                m.set_gain(gain)
+                n += 1
+        return n
+
     # ============================================================
     # Two-pass forward
     # ============================================================
