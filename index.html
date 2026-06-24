@@ -98,7 +98,7 @@
 <body>
 <header>
   <button class="menu-btn" onclick="document.body.classList.toggle('menu')">☰</button>
-  <span class="brand"><span class="logo"></span>meta-spider<small>v0.1 · docs</small></span>
+  <span class="brand"><span class="logo"></span>meta-spider<small>v0.2 · docs</small></span>
   <span class="spacer"></span>
   <input class="search" id="search" placeholder="Filter sections…" oninput="filterNav(this.value)">
   <span class="lang">
@@ -249,6 +249,24 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
       <code>α = floor + (1−floor)·e^(−step/τ)</code> starts at full and decays to a <code>floor</code>,
       topping up against the "drain" so doubt holds at a steady setpoint instead of running away. It is
       opt-in — the validated short-generation regime is untouched.</p>
+
+    <h3>The dial: a gain knob <small>(v0.2)</small></h3>
+    <p>That same injection coefficient becomes a <b>continuous control knob</b> when you set it by hand
+      instead of letting it decay. <code>gain=1.0</code> is the trained baseline; <code>&gt;1</code>
+      amplifies the doubt (more refusals), <code>&lt;1</code> attenuates it, and <code>&lt;0</code>
+      inverts it — pushing the model toward confidence. It composes with the trained gates and with AGC.</p>
+<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter
+doubter = Doubter.from_checkpoint(<span class="s">"doubter.pt"</span>); pipe.attach(doubter)
+doubter.set_gain(<span class="n">1.5</span>)   <span class="c"># more cautious — more refusals</span>
+doubter.set_gain(<span class="n">-0.5</span>)  <span class="c"># more confident — invert the injection</span>
+pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># the mixing console: dial every attached modifier</span></pre>
+    <p>Unlike a LoRA — a static weight delta that entangles the behaviour into the weights — this is an
+      <b>isolated channel</b> you fade at inference, and several modifiers can sum on the same residual
+      stream, each with its own gain: a mixing console for behaviour.</p>
+    <div class="note"><b>Range.</b> Validated monotonic on a 12B instruct model: <code>gain</code> 0 → 1.5
+      dials refusal smoothly; past ~1.5–2.0 the positive-feedback injection runs away — combine the static
+      gain with AGC near the ceiling. It is a <b>coverage</b> knob, not free calibration: it controls how
+      much the model abstains, not how smart the abstentions are.</div>
   </section>
 
   <section id="architecture">
@@ -646,6 +664,24 @@ print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Far
       <code>α = floor + (1−floor)·e^(−шаг/τ)</code> стартует с максимума и убывает к <code>floor</code>,
       доливая против «стока», — сомнение держится на ровном setpoint, а не убегает. Это opt-in —
       валидированный режим коротких генераций не трогается.</p>
+
+    <h3>Ручка: коэффициент усиления <small>(v0.2)</small></h3>
+    <p>Тот же коэффициент инъекции становится <b>непрерывной ручкой управления</b>, если задать его
+      вручную, а не пускать на затухание. <code>gain=1.0</code> — обученный baseline; <code>&gt;1</code>
+      усиливает сомнение (больше отказов), <code>&lt;1</code> ослабляет, <code>&lt;0</code> инвертирует —
+      толкает модель к уверенности. Композируется с обученными гейтами и с AGC.</p>
+<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter
+doubter = Doubter.from_checkpoint(<span class="s">"doubter.pt"</span>); pipe.attach(doubter)
+doubter.set_gain(<span class="n">1.5</span>)   <span class="c"># осторожнее — больше отказов</span>
+doubter.set_gain(<span class="n">-0.5</span>)  <span class="c"># увереннее — инверсия инъекции</span>
+pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># микшерный пульт: крутит все прицепленные модификаторы</span></pre>
+    <p>В отличие от LoRA — статической весовой дельты, запутывающей поведение в веса — это
+      <b>изолированный канал</b>, который крутится на инференсе; несколько модификаторов суммируются на
+      одном residual stream, каждый со своим gain: микшерный пульт для поведения.</p>
+    <div class="note"><b>Диапазон.</b> Валидировано монотонно на 12B instruct-модели: <code>gain</code>
+      0 → 1.5 плавно крутит отказ; за ~1.5–2.0 положительная ОС инъекции срывается — у потолка сочетать
+      статический gain с AGC. Это ручка <b>покрытия</b>, не калибровки: управляет тем, сколько модель
+      воздерживается, а не тем, насколько умны воздержания.</div>
   </section>
 
   <section id="architecture-ru">
