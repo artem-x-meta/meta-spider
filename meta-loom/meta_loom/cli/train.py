@@ -47,8 +47,8 @@ def train_stage(
             raise FileNotFoundError(f"missing {ds} — run `metaloom collect --run-dir {run_dir}` first")
         samples = ActivationDatasetCollector.load(str(ds))
     tr, va, te = manifest["train_size"], manifest["val_size"], manifest["test_size"]
-    train_s = samples[:tr]
-    val_s = samples[tr:tr + va]
+    from meta_loom.data.splits import split_samples
+    train_s, val_s, _ = split_samples(samples, tr, va, te)  # disjoint holdout + leakage guard
 
     # (determined before the pipeline-injection branch — also needed in TrainerConfig below)
     cut = manifest.get("slice_cut_layer")

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meta-core"
-version = "0.2.0"
+version = "0.2.1"
 description = "Meta-Core — meta-attention inference primitives: frozen base + trainable wrapper (two-pass pipeline, hooks, cross-attention, encoders, modifiers, dynamic). Checkpoint format contract. No training/benchmarks."
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }

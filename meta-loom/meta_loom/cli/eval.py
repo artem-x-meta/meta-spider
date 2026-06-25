@@ -41,7 +41,8 @@ def eval_stage(
             raise FileNotFoundError(f"missing {ds} — run `metaloom collect --run-dir {run_dir}` first")
         samples = ActivationDatasetCollector.load(str(ds))
     tr, va, te = manifest["train_size"], manifest["val_size"], manifest["test_size"]
-    test_s = samples[tr + va: tr + va + te]
+    from meta_loom.data.splits import split_samples
+    _, _, test_s = split_samples(samples, tr, va, te)  # held-out test + leakage guard
 
     if pipeline is None:
         # max_memory → offload (12B inference on 4GB). attn_implementation is taken from

@@ -1,5 +1,20 @@
 # Changelog
 
+## v0.2.1 — first-class train/val/test split + leakage guard
+
+### Added
+- `meta_loom.data.split_samples(samples, train, val, test, verify=True)`: the canonical holdout split
+  (the list is shuffled at collect time; sequential slices are disjoint). With `verify=True` it ASSERTS
+  no question (`input_text`) appears in two splits — raises `ValueError` on leakage. `metaloom train`
+  and `metaloom eval` now go through it (previously each hand-sliced the samples with no guard).
+- `meta_loom.data.assert_disjoint_from(samples, holdout)`: guard for the cross-run / cross-dataset case
+  (e.g. train on full-mmlu, eval on mmlu_hard from a different collect — different index spaces).
+- Tests `tests/test_splits.py` (6). Suite 132 → 138.
+
+### Why
+Classic DL hygiene the toolkit was missing as an explicit safeguard: a frozen base does not prevent the
+wrapper from memorising per-question correctness, so train/test must be provably disjoint.
+
 ## v0.2.0 — the uncertainty potentiometer
 
 **Headline: a runtime gain knob on the latent injection.** The Doubter's cross-attention injection is
