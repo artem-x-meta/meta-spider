@@ -346,7 +346,15 @@ meta-deploy →  meta-core               <span class="c"># export wrapper → ll
         Pass 2.</td></tr>
       <tr><td><code>Doubter</code></td><td>The modifier tying it together: encoder + cross-attention
         + buffer + hooks. Attach to a pipeline with <code>pipe.attach(doubter)</code>.</td></tr>
+      <tr><td><code>Watchdog</code> <small>(v0.2)</small></td><td><b>Read-only</b> uncertainty sensor:
+        reuses a trained encoder to read the cognitive token at the decision point, then a logistic
+        <code>ConfidenceProbe</code> → <code>P(uncertain)</code>. <b>Injects nothing</b> — gates an
+        external action (look up / refuse / escalate) with no generation side-effects.
+        <code>Watchdog.fit()</code> / <code>.score()</code> / <code>.is_uncertain()</code>.</td></tr>
     </table>
+    <p class="note">Two ways to use the same signal: the <b>Doubter</b> <i>injects</i> it into the
+      residual (modulates the decision); the <b>Watchdog</b> only <i>reads</i> it and gates an action.
+      For long step-by-step generation the read-only Watchdog avoids the compounding of constant injection.</p>
   </section>
 
   <section id="configuration">
@@ -499,11 +507,17 @@ print(report.summary())</pre>
 
 <span class="c"># two-pass inference inside the llama.cpp fork (CPU, no PyTorch):</span>
 META_SIDECAR=doubter_sidecar.gguf META_LAYERS=16,17,18,19,20,21,22,23 \
+META_GAIN=1.0 \
 META_PROMPT=<span class="s">"What is the capital of France?"</span> \
   ./build/bin/llama-meta-generate -m base.Q4_K_M.gguf -c 2048 -t 4</pre>
-    <p>Build the fork and the <code>llama-meta-generate</code> example as described in the
-      <code>meta-deploy</code> README (<code>llama_patch/</code> applies to llama.cpp base
-      <code>b9619</code>).</p>
+    <p>Build the fork with <code>scripts/build_llama.sh --backend {cuda,cpu,metal}</code> (handles the
+      CUDA driver-stub quirk on Kaggle/Colab); details in the <code>meta-deploy</code> README
+      (<code>llama_patch/</code> applies to llama.cpp base <code>b9619</code>).</p>
+    <div class="note"><b>The gain knob travels to the edge <small>(v0.2)</small>.</b>
+      <code>META_GAIN</code> scales the injection at deploy time — parity with PyTorch
+      <code>set_gain()</code> (<code>1.0</code> = trained baseline, <code>0</code> ≈ base). Plus a batch
+      mode (<code>META_PROMPTS</code>/<code>META_OUT</code>, <code>\0</code>-separated) for one model load
+      over many prompts.</div>
     <div class="note"><b>Robustness.</b> The self-assessment signal survives 4-bit
       compression: behavior (refuse / answer) holds down to <code>Q4_K_M</code> with
       negligible loss.</div>
