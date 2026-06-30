@@ -8,6 +8,7 @@ Backward flows through the frozen base as through a passive conductor.
 from meta_loom.training.collector import ActivationDatasetCollector, DatasetSample
 from meta_loom.training.trainer import Trainer, TrainerConfig
 from meta_loom.training.losses import (
+    build_agentic_target,
     build_correction_target,
     build_target_by_action,
     make_labels_with_prompt_mask,
@@ -18,6 +19,7 @@ __all__ = [
     "DatasetSample",
     "Trainer",
     "TrainerConfig",
+    "build_agentic_target",
     "build_correction_target",
     "build_target_by_action",
     "make_labels_with_prompt_mask",

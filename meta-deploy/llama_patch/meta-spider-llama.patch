@@ -273,7 +273,7 @@ index 3e0fe66..7d4fbc3 100644
 +    kqv = ggml_cont(ctx, ggml_permute(ctx, kqv, 0, 2, 1, 3));        // [head_dim, n_head, seq]
 +    ggml_tensor * att = ggml_reshape_2d(ctx, kqv, bottleneck, seq);   // [bn, seq]
 +    ggml_tensor * out = ggml_mul_mat(ctx, W("up_proj.weight"), att);  // [n_embd, seq]
-+    return ggml_add(ctx, cur, ggml_scale(ctx, out, gate_tanh.at(il)));
++    return ggml_add(ctx, cur, ggml_scale(ctx, out, gate_tanh.at(il) * (getenv("META_GAIN") ? (float) atof(getenv("META_GAIN")) : 1.0f)));
 +}
 diff --git a/src/llama-adapter.h b/src/llama-adapter.h
 index f0b1e50..b7b7cc8 100644

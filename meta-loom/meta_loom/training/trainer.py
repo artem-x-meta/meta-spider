@@ -306,6 +306,7 @@ class Trainer:
         train_samples: list[DatasetSample],
         val_samples: Optional[list[DatasetSample]] = None,
         targets_by_sample: Optional[list[tuple[str, str]]] = None,
+        val_targets_by_sample: Optional[list[tuple[str, str]]] = None,
         checkpoint_dir: Optional[str] = None,
     ) -> dict[str, Any]:
         """Main training loop with the two-pass structure.
@@ -316,6 +317,9 @@ class Trainer:
             targets_by_sample: optional pre-built (target_text, action_type)
                 per sample. If None — generated via
                 `build_correction_target(s.ground_truth, s.pass1_correct, ...)`.
+            val_targets_by_sample: optional pre-built targets for val_samples (same shape).
+                If None — generated with the QA builder. Pass agentic targets here so the
+                val loss matches the train objective (project-agentic-session-training).
             checkpoint_dir: where to save best_model.pt. None = don't save.
 
         Returns:
@@ -417,7 +421,7 @@ class Trainer:
             # Validation
             val_loss = None
             if val_samples is not None and len(val_samples) > 0:
-                val_targets = [
+                val_targets = val_targets_by_sample or [
                     build_correction_target(
                         s.ground_truth, s.pass1_correct,
                         correction_ratio=cfg.correction_ratio,

@@ -20,7 +20,8 @@ requires `transformers` (+ `bitsandbytes` for nf4), installed separately.
 |---|---|
 | `MetaSpiderConfig` | config: model_name, target_layers/cross_attn_layers, dtype, quantization, offload |
 | `MetaSpiderPipeline` | wraps an HF causal LM; two-pass forward + `.generate()` |
-| `Doubter` / `DoubterConfig` | calibrated-refusal modifier; `Doubter.from_checkpoint(path)` |
+| `Doubter` / `DoubterConfig` | calibrated-refusal modifier (CA-injection); `Doubter.from_checkpoint(path)` |
+| `Watchdog` / `ConfidenceProbe` | **read-only** uncertainty sensor: encoder → cog token → logistic probe → P(uncertain). NO injection — gates an external action (lookup/refuse). `.fit()` / `.score()` / `.is_uncertain()` |
 | `SelectiveEncoder` / `MultiTokenEncoder` | activation encoders → cognitive tokens |
 | `BottleneckCrossAttention` | meta-attention head (injects cog tokens into the residual via tanh-gate) |
 | `ActivationCollector` | forward hooks on target layers (family-agnostic: Llama/Qwen/Gemma/Phi/Granite) |
@@ -38,6 +39,21 @@ cfg = MetaSpiderConfig(model_name="Qwen/Qwen2.5-0.5B-Instruct",
 pipe = MetaSpiderPipeline.from_pretrained(cfg)
 pipe.attach(Doubter.from_checkpoint("doubter_checkpoint.pt"))
 print(pipe.generate("What is the capital of France?", max_new_tokens=64))
+```
+
+### Watchdog (read-only sensor)
+
+Reuses a trained encoder but **injects nothing** — reads the cognitive token at the decision point and
+returns `P(uncertain)` to gate an external action (look up / refuse / escalate). No generation side-effects.
+
+```python
+from meta_core import Watchdog, Doubter
+doubter = Doubter.from_checkpoint("doubter_checkpoint.pt")
+# fit a probe on collected (activations → label) pairs, or load a saved one:
+wd = Watchdog.fit(doubter.encoder, activation_lists, labels)   # 1 = uncertain/wrong
+if wd.is_uncertain(activations, threshold=0.5):
+    ...  # trigger a docs lookup / ask for clarification instead of answering blind
+wd.save("watchdog.json"); Watchdog.load("watchdog.json", doubter.encoder)
 ```
 
 Training/eval — package **meta-loom**; agent + chat — **meta-agent**; llama.cpp deploy — **meta-deploy**.

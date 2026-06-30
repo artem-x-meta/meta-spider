@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "meta-loom"
-version = "0.2.1"
+version = "0.3.0"
 description = "Meta-Loom — training + benchmark-evaluation pipeline for meta-attention: Trainer, collector, losses, BaselineComparison (QA), AgentComparison (agentic, on Meta-Agent), harness, LLM-judge. Depends on Meta-Core + Meta-Agent."
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }

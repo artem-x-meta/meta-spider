@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from meta_loom.cli import build_universal as _build_universal
 from meta_loom.cli import collect as _collect
 from meta_loom.cli import eval as _eval
 from meta_loom.cli import train as _train
@@ -17,6 +18,7 @@ _STAGES = {
     "collect": _collect,
     "train": _train,
     "eval": _eval,
+    "build-universal": _build_universal,
 }
 
 

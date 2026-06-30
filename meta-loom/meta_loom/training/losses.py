@@ -29,14 +29,17 @@ from torch.utils.checkpoint import checkpoint
 
 __all__ = [
     "ActionType",
+    "AgenticActionType",
     "build_correction_target",
     "build_target_by_action",
+    "build_agentic_target",
     "make_labels_with_prompt_mask",
     "chunked_lm_loss",
 ]
 
 
 ActionType = Literal["confirm", "correct", "refuse"]
+AgenticActionType = Literal["code", "lookup"]
 
 
 REFUSAL_TEMPLATES = [
@@ -44,6 +47,40 @@ REFUSAL_TEMPLATES = [
 ]
 
 CORRECTION_TEMPLATE = " Wait, the correct answer is {answer}."
+
+# Agentic targets — same LM-CE mechanism as QA, but the "uncertain" branch routes the
+# latent doubt into a TOOL CALL instead of a text refusal (project-agentic-session-training).
+# Confident (pass1 solved it directly) → start writing code; uncertain → emit docs_lookup.
+# The tool-call string matches the native Qwen format parsed by the agentic harness
+# (`<tool_call>{json}</tool_call>`), so a trained nudge becomes a real tool invocation.
+AGENTIC_CODE_TEMPLATE = "\n```python\n"
+AGENTIC_LOOKUP_TEMPLATE = (
+    '\n<tool_call>\n{{"name": "docs_lookup", "arguments": {{"query": "{query}"}}}}\n</tool_call>'
+)
+
+
+def build_agentic_target(
+    query: str,
+    pass1_correct: bool,
+) -> tuple[str, AgenticActionType]:
+    """Build an agentic (target_text, action_type) from the Pass-1 result.
+
+    Parallel to `build_correction_target`, but routes doubt into action:
+      - pass1_correct (base solved it directly) → start a code block ("code").
+      - pass1 wrong (base couldn't / was uncertain) → emit a `docs_lookup` tool call ("lookup").
+
+    Args:
+        query: the lookup query for the uncertain branch (e.g. the task intent). Stored per
+            sample in `DatasetSample.ground_truth` by the agentic loader.
+        pass1_correct: whether the base got it right on its own (execution-graded for ODEX).
+
+    Returns:
+        (target_text, action_type) — for Pass-2 supervision via the same LM CE.
+    """
+    if pass1_correct:
+        return AGENTIC_CODE_TEMPLATE, "code"
+    safe = (query or "").replace("\\", " ").replace('"', "'").replace("\n", " ").strip()
+    return AGENTIC_LOOKUP_TEMPLATE.format(query=safe), "lookup"
 
 
 def build_correction_target(

@@ -46,6 +46,46 @@ def test_build_correction_target_refuse():
     assert "not confident" in target.lower()
 
 
+def test_build_agentic_target_code_when_confident():
+    """pass1_correct=True → 'code' action: start a code block, NOT a tool call."""
+    from meta_loom import build_agentic_target
+
+    target, action = build_agentic_target("how to parse a date", pass1_correct=True)
+    assert action == "code"
+    assert "```python" in target
+    assert "tool_call" not in target
+
+
+def test_build_agentic_target_lookup_when_uncertain_is_parseable():
+    """pass1 wrong → 'lookup' action emitting a tool call the agentic harness can parse."""
+    import json
+    import re
+
+    from meta_loom import build_agentic_target
+
+    target, action = build_agentic_target("strftime milliseconds format", pass1_correct=False)
+    assert action == "lookup"
+    # same regex the native ODEX harness uses to detect a docs_lookup call
+    m = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", target, re.S)
+    assert m is not None, target
+    call = json.loads(m.group(1))
+    assert call["name"] == "docs_lookup"
+    assert call["arguments"]["query"] == "strftime milliseconds format"
+
+
+def test_build_agentic_target_lookup_query_is_json_safe():
+    """A query with quotes/newlines/backslashes still yields valid JSON (no broken tool call)."""
+    import json
+    import re
+
+    from meta_loom import build_agentic_target
+
+    target, _ = build_agentic_target('save to "C:\\tmp"\nwith json', pass1_correct=False)
+    m = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", target, re.S)
+    assert m is not None
+    json.loads(m.group(1))  # must not raise
+
+
 def test_build_target_by_action_explicit():
     """build_target_by_action creates a target from an explicit action type."""
     assert build_target_by_action("B) 4 Hz", "confirm") == " B) 4 Hz"

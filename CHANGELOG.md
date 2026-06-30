@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.3.0 — the universal-Doubter factory (`build-universal`)
+
+### Added
+- **`metaloom build-universal --model-name N`** — one command to build a *general* uncertainty Doubter
+  for any model: assembles a **balanced diverse agentic mix** (commit + hold across the decision space),
+  runs collect → train model-agnostically (`--target-layers late`), and writes a publishable run-dir.
+  Validated on Qwen2.5-14B: the diverse-trained wrapper was the only arm with no axis collapse on the
+  6-axis suite (floor 0.467, commit preserved) — `docs/results/qwen-14b/diverse-train-balanced.md`.
+- `meta_loom.data.agentic_mix` — the reusable diverse-mix builder (`build_training_mix(tokenizer, …)`):
+  *call* from When2Call `train_pref.chosen_response` (NB: the SFT split has no tool calls), *memory*
+  from PopQA-popular + SQuAD-answerable, *abstain/clarify* from When2Call SFT, *lookup* from PopQA
+  long-tail, *unknown* from SQuAD-unanswerable. `--suite` excludes the held-out suite's questions
+  (leakage guard). `targets_from_samples()` feeds the Trainer's `targets_by_sample`.
+- `train_stage(agentic_targets=True, init_from=…)` — explicit multi-action routing targets, and
+  continuing from an existing wrapper (e.g. a QA Doubter → agentic).
+- `meta_loom.evaluation.agentic_suite` — per-axis log-prob suite eval (`compare_base_vs_doubter`):
+  reports per-axis accuracy + the balance aggregates **floor** (worst axis) and **commit_mean**
+  (call + memory). Wired into `build-universal --eval`. (Action axes exact; knowledge axes via
+  log-prob are approximate — a generation+judge eval is more faithful there.)
+- `build-universal --export-gguf` — also emit the llama.cpp GGUF sidecar (via meta-deploy, if installed).
+- Tests `tests/test_build_universal.py` (8). Suite 145 → 153.
+
+### Why
+The recipe that produced the balanced general Doubter was a one-off vast/Kaggle script; this makes it a
+turnkey framework feature — a "factory" for universal uncertainty wrappers over arbitrary base models.
+
 ## v0.2.1 — first-class train/val/test split + leakage guard
 
 ### Added

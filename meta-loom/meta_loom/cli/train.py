@@ -26,6 +26,8 @@ def train_stage(
     device: Optional[str] = None,
     gradient_checkpointing: bool = False,
     max_memory: Optional[dict] = None,
+    agentic_targets: bool = False,
+    init_from: Optional[str] = None,
     pipeline=None,
     samples: Optional[list] = None,
     verbose: bool = True,
@@ -33,6 +35,10 @@ def train_stage(
     """Train per the run-dir manifest → <run-dir>/doubter_checkpoint.pt + history.json.
 
     pipeline/samples are injectable (tests). Returns the path to the checkpoint.
+
+    agentic_targets — multi-action routing (the universal-Doubter factory): derive explicit
+      (target_text, label) per sample from its ground_truth spec instead of the QA selective path.
+    init_from — start from an existing Doubter checkpoint (e.g. continue a QA wrapper into agentic).
     """
     from meta_core import Doubter, DoubterConfig, MetaSpiderPipeline
     from meta_loom import ActivationDatasetCollector, Trainer, TrainerConfig
@@ -85,14 +91,27 @@ def train_stage(
         else len(pipeline.config.target_layers)
     num_cog = n_target if selective else 8
 
-    doubter = Doubter(DoubterConfig(
-        encoder_type=manifest["encoder_type"],
-        encoder_bottleneck=256, encoder_gate_init=0.3,
-        ca_bottleneck_dim=256, ca_num_heads=8, ca_dropout=0.1, ca_gate_init=0.3,
-        num_cognitive_tokens=num_cog, token_preference_init=0.0,
-        correction_ratio=0.0, enable_self_correction=False,
-    ))
+    if init_from:
+        # continue an existing wrapper (e.g. QA → agentic); rebuilds its own config from the ckpt
+        doubter = Doubter.from_checkpoint(init_from)
+        if verbose:
+            print(f"  init_from: {init_from}", flush=True)
+    else:
+        doubter = Doubter(DoubterConfig(
+            encoder_type=manifest["encoder_type"],
+            encoder_bottleneck=256, encoder_gate_init=0.3,
+            ca_bottleneck_dim=256, ca_num_heads=8, ca_dropout=0.1, ca_gate_init=0.3,
+            num_cognitive_tokens=num_cog, token_preference_init=0.0,
+            correction_ratio=0.0, enable_self_correction=False,
+        ))
     pipeline.attach(doubter)
+
+    # agentic factory: explicit per-sample (target_text, label) from the ground_truth spec
+    tr_tgt = va_tgt = None
+    if agentic_targets:
+        from meta_loom.data.agentic_mix import targets_from_samples
+        tr_tgt = targets_from_samples(train_s)
+        va_tgt = targets_from_samples(val_s) if val_s else None
 
     trainer = Trainer(doubter, pipeline, TrainerConfig(
         epochs=epochs, batch_size=batch_size, grad_accumulation=grad_accumulation,
@@ -107,6 +126,7 @@ def train_stage(
 
     t0 = time.time()
     history = trainer.train(train_s, val_samples=(val_s or None),
+                            targets_by_sample=tr_tgt, val_targets_by_sample=va_tgt,
                             checkpoint_dir=str(rd / "checkpoints"))
     ckpt = rd / "doubter_checkpoint.pt"
     doubter.save_checkpoint(str(ckpt))

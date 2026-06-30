@@ -25,6 +25,11 @@ go by the content (the integration points are stable: `llama_adapter_cvec::apply
 
 ## Apply
 
+**Scripted (recommended):** `scripts/build_llama.sh --backend {cuda,cpu,metal} [--arch 75] [--out DIR]`
+does clone@b9619 + patch + copy examples + cmake configure/build, and includes the CUDA
+`CUDA::cuda_driver target not found` fix (empty/read-only toolkit `stubs/` on Kaggle/Colab → points
+cmake at the real `libcuda.so`). Manual steps below.
+
 ```bash
 git clone https://github.com/ggml-org/llama.cpp && cd llama.cpp
 git checkout b9619                                   # base commit
@@ -46,7 +51,9 @@ META_LAYERS=16,17,18,19,20,21,22,23 \
 META_PROMPT="What is the capital of France?" META_NGEN=64 \
 ./build/bin/llama-meta-generate -m base.gguf -c 2048 -t 4
 #   META_BASE=1 — clean base (oracle); META_SIDECAR and META_LAYERS are still REQUIRED
+#   META_GAIN=1.5 — injection-strength knob (default 1.0; parity with PyTorch set_gain; 0 ≈ base)
 #   META_RAW=1 — prompt as is (non-Gemma models: pass your own chat format in META_PROMPT)
+#   META_PROMPTS=<file> META_OUT=<file> — batch mode (\0-separated), one model load for many prompts
 #   META_DYNAMIC=1 META_THRESHOLD=0.5 — periodic cog refresh (Phase 3 dynamic)
 ```
 

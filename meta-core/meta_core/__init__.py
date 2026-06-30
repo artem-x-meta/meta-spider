@@ -27,6 +27,7 @@ from meta_core.encoders.base import Encoder
 from meta_core.encoders.selective import SelectiveEncoder
 from meta_core.encoders.transformer import TransformerEncoder
 from meta_core.encoders.multi_token import MultiTokenEncoder
+from meta_core.watchdog import Watchdog, ConfidenceProbe
 
 __all__ = [
     "MetaSpiderConfig", "DoubterConfig",
@@ -35,4 +36,5 @@ __all__ = [
     "register_encoder", "register_modifier", "StageTimer", "IntrospectionCache",
     "Modifier", "Doubter",
     "Encoder", "SelectiveEncoder", "TransformerEncoder", "MultiTokenEncoder",
+    "Watchdog", "ConfidenceProbe",
 ]

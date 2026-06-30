@@ -56,6 +56,10 @@ META_PROMPT="What is the capital of France?" META_NGEN=64 \
 ```
 
 `META_LAYERS` = `cross_attn_layers` from `run.json`. `META_BASE=1` — clean base (for comparison).
+**`META_GAIN`** = injection-strength knob (default `1.0`), parity with PyTorch `Doubter.set_gain()`:
+scales the CA injection `cur + tanh(gate)·META_GAIN·out`, so the act/abstain threshold can be swept at
+deploy time (`META_GAIN=0` ≈ base). `META_PROMPTS`=file (`\0`-separated) + `META_OUT`=file → batch mode
+(one model load for many prompts). Build the fork with `scripts/build_llama.sh --backend {cuda,cpu,metal}`.
 The llama.cpp patch + how-to are in [`llama_patch/`](llama_patch/README.md). Helper: `scripts/run_meta_generate.sh`.
 
 ## Layout
