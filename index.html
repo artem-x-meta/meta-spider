@@ -98,7 +98,7 @@
 <body>
 <header>
   <button class="menu-btn" onclick="document.body.classList.toggle('menu')">☰</button>
-  <span class="brand"><span class="logo"></span>meta-spider<small>v0.2.1 · docs</small></span>
+  <span class="brand"><span class="logo"></span>meta-spider<small>v0.3.0 · docs</small></span>
   <span class="spacer"></span>
   <input class="search" id="search" placeholder="Filter sections…" oninput="filterNav(this.value)">
   <span class="lang">
@@ -346,15 +346,7 @@ meta-deploy →  meta-core               <span class="c"># export wrapper → ll
         Pass 2.</td></tr>
       <tr><td><code>Doubter</code></td><td>The modifier tying it together: encoder + cross-attention
         + buffer + hooks. Attach to a pipeline with <code>pipe.attach(doubter)</code>.</td></tr>
-      <tr><td><code>Watchdog</code> <small>(v0.2)</small></td><td><b>Read-only</b> uncertainty sensor:
-        reuses a trained encoder to read the cognitive token at the decision point, then a logistic
-        <code>ConfidenceProbe</code> → <code>P(uncertain)</code>. <b>Injects nothing</b> — gates an
-        external action (look up / refuse / escalate) with no generation side-effects.
-        <code>Watchdog.fit()</code> / <code>.score()</code> / <code>.is_uncertain()</code>.</td></tr>
     </table>
-    <p class="note">Two ways to use the same signal: the <b>Doubter</b> <i>injects</i> it into the
-      residual (modulates the decision); the <b>Watchdog</b> only <i>reads</i> it and gates an action.
-      For long step-by-step generation the read-only Watchdog avoids the compounding of constant injection.</p>
   </section>
 
   <section id="configuration">
@@ -437,6 +429,22 @@ doubter.save_checkpoint(<span class="s">"doubter.pt"</span>)</pre>
     <div class="warn"><b>Probe pretraining.</b> Deep (per-layer) encoders need it: each
       projector is pretrained ~1&nbsp;min on CPU to predict <code>P(correct)</code>. Without it
       the network does not converge.</div>
+
+    <h3>One command: a universal Doubter <small>(v0.3)</small></h3>
+    <p><code>metaloom build-universal</code> codifies the recipe for a <b>general</b> Doubter — one
+      wrapper trained on a <b>balanced diverse mix</b> (commit + hold across the whole agentic decision
+      space) rather than one narrow task. On a 6-axis held-out suite it was the only arm with <b>no axis
+      collapse</b> (worst-axis floor 0.47, commit preserved): a calibrated router that answers from
+      memory, calls a tool, asks to clarify, or declines.</p>
+<pre>metaloom build-universal --run-dir runs/uni --model-name Qwen/Qwen2.5-14B-Instruct \
+                 --quantization nf4 --per-class 70 --epochs 6 \
+                 --suite suite.json --eval --export-gguf</pre>
+    <p>It assembles the mix (When2Call · PopQA · SQuAD2, model-agnostic via the tokenizer;
+      <code>--suite</code> excludes its questions = leakage guard), runs <code>collect → train</code>
+      with explicit multi-action targets, then optionally a <b>per-axis</b> eval (<code>--eval</code> →
+      <code>floor</code> / <code>commit_mean</code>) and a GGUF sidecar (<code>--export-gguf</code>).
+      Output: a publishable <code>run.json</code> + checkpoint — a "factory" for uncertainty wrappers
+      over any base.</p>
   </section>
 
   <section id="evaluation">
@@ -507,17 +515,11 @@ print(report.summary())</pre>
 
 <span class="c"># two-pass inference inside the llama.cpp fork (CPU, no PyTorch):</span>
 META_SIDECAR=doubter_sidecar.gguf META_LAYERS=16,17,18,19,20,21,22,23 \
-META_GAIN=1.0 \
 META_PROMPT=<span class="s">"What is the capital of France?"</span> \
   ./build/bin/llama-meta-generate -m base.Q4_K_M.gguf -c 2048 -t 4</pre>
-    <p>Build the fork with <code>scripts/build_llama.sh --backend {cuda,cpu,metal}</code> (handles the
-      CUDA driver-stub quirk on Kaggle/Colab); details in the <code>meta-deploy</code> README
-      (<code>llama_patch/</code> applies to llama.cpp base <code>b9619</code>).</p>
-    <div class="note"><b>The gain knob travels to the edge <small>(v0.2)</small>.</b>
-      <code>META_GAIN</code> scales the injection at deploy time — parity with PyTorch
-      <code>set_gain()</code> (<code>1.0</code> = trained baseline, <code>0</code> ≈ base). Plus a batch
-      mode (<code>META_PROMPTS</code>/<code>META_OUT</code>, <code>\0</code>-separated) for one model load
-      over many prompts.</div>
+    <p>Build the fork and the <code>llama-meta-generate</code> example as described in the
+      <code>meta-deploy</code> README (<code>llama_patch/</code> applies to llama.cpp base
+      <code>b9619</code>).</p>
     <div class="note"><b>Robustness.</b> The self-assessment signal survives 4-bit
       compression: behavior (refuse / answer) holds down to <code>Q4_K_M</code> with
       negligible loss.</div>
@@ -864,6 +866,21 @@ doubter.save_checkpoint(<span class="s">"doubter.pt"</span>)</pre>
     <div class="warn"><b>Предобучение проб (probe).</b> Глубоким (послойным) энкодерам оно нужно:
       каждый projector предобучается ~1&nbsp;мин на CPU предсказывать <code>P(correct)</code>. Без
       этого сеть не сходится.</div>
+
+    <h3>Одна команда: универсальная обвязка <small>(v0.3)</small></h3>
+    <p><code>metaloom build-universal</code> кодифицирует рецепт <b>общей</b> обвязки — один Doubter,
+      обученный на <b>сбалансированном диверс-миксе</b> (commit + hold по всему пространству агентного
+      решения), а не под одну узкую задачу. На held-out суите из 6 осей это единственный арм <b>без
+      провала ни на одной оси</b> (floor худшей оси 0.47, commit сохранён): калиброванный роутер,
+      который отвечает из памяти, зовёт инструмент, уточняет или отказывает.</p>
+<pre>metaloom build-universal --run-dir runs/uni --model-name Qwen/Qwen2.5-14B-Instruct \
+                 --quantization nf4 --per-class 70 --epochs 6 \
+                 --suite suite.json --eval --export-gguf</pre>
+    <p>Собирает микс (When2Call · PopQA · SQuAD2, модельно-агностично через токенизатор;
+      <code>--suite</code> исключает его вопросы = защита от утечки), гонит <code>collect → train</code>
+      с явными мульти-экшн таргетами, затем опционально <b>per-axis</b> eval (<code>--eval</code> →
+      <code>floor</code> / <code>commit_mean</code>) и GGUF-sidecar (<code>--export-gguf</code>). На
+      выходе — публикуемый <code>run.json</code> + чекпоинт. «Фабрика» обвязок неуверенности под любую базу.</p>
   </section>
 
   <section id="evaluation-ru">
