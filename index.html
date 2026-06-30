@@ -267,6 +267,19 @@ pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># the mixing con
       dials refusal smoothly; past ~1.5–2.0 the positive-feedback injection runs away — combine the static
       gain with AGC near the ceiling. It is a <b>coverage</b> knob, not free calibration: it controls how
       much the model abstains, not how smart the abstentions are.</div>
+    <img class="diagram" src="assets/gain-en.svg" alt="The gain knob: a runtime dial mapping gain to refusal rate; AGC prevents runaway">
+
+    <h3>The Watchdog: a read-only uncertainty sensor</h3>
+    <p>The same signal can be used <b>without</b> injecting anything. The <code>Watchdog</code> reads the
+      cognitive token through a linear <code>ConfidenceProbe</code> and returns a verdict (confident /
+      uncertain), so you gate an <b>external</b> action — retrieve, clarify, escalate — while
+      <b>generation stays untouched</b>. That avoids the off-task drift constant injection causes over long
+      outputs (a key finding: injection is a modulator of the <i>decision</i>, not of generation).</p>
+<pre><span class="k">from</span> meta_core <span class="k">import</span> Watchdog, ConfidenceProbe
+watch = Watchdog(ConfidenceProbe.load(<span class="s">"probe.pt"</span>))
+<span class="k">if</span> watch.score(pipe, prompt).is_uncertain:
+    docs = retrieve(...)   <span class="c"># external action — generation is never modified</span></pre>
+    <img class="diagram" src="assets/watchdog-en.svg" alt="Watchdog: reads the cognitive token via a probe and gates an external action without touching generation">
   </section>
 
   <section id="architecture">
@@ -445,6 +458,7 @@ doubter.save_checkpoint(<span class="s">"doubter.pt"</span>)</pre>
       <code>floor</code> / <code>commit_mean</code>) and a GGUF sidecar (<code>--export-gguf</code>).
       Output: a publishable <code>run.json</code> + checkpoint — a "factory" for uncertainty wrappers
       over any base.</p>
+    <img class="diagram" src="assets/factory-en.svg" alt="The factory: one command builds a general Doubter — diverse mix, collect, train, eval, export; the only arm with no axis collapse">
   </section>
 
   <section id="evaluation">
