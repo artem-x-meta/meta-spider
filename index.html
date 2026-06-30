@@ -161,6 +161,7 @@
       through gated cross-attention. The base model stays <b>frozen</b>; only a thin
       wrapper (~2% of params) is trained. The result is <b>selective prediction</b> —
       the model abstains on questions it would get wrong.</p>
+    <img class="diagram" src="assets/overview-en.svg" alt="Meta-Spider at a glance: build the wrapper (factory), it reads and injects on a frozen base, control it (gain) or just read it (Watchdog), deploy anywhere">
     <div class="grid">
       <div class="card"><h3>Frozen base</h3><p>The LLM weights never change. Gradients
         flow <i>through</i> the frozen base to the wrapper; the base acts as a proxy loss.</p></div>
@@ -607,6 +608,7 @@ META_PROMPT=<span class="s">"What is the capital of France?"</span> \
       перекрёстное внимание (cross-attention). Базовая модель остаётся <b>замороженной</b>;
       обучается только тонкая обвязка (~2% параметров). Результат — <b>селективное
       предсказание</b>: модель воздерживается на вопросах, где ошиблась бы.</p>
+    <img class="diagram" src="assets/overview-ru.svg" alt="Meta-Spider — общая картина: фабрика строит обвязку, она читает и впрыскивает на замороженной базе, ей рулят (ручка) или просто читают (Сторож), деплоят везде">
     <div class="grid">
       <div class="card"><h3>Замороженная база</h3><p>Веса LLM не меняются. Градиенты текут
         <i>сквозь</i> замороженную базу к обвязке; база работает как прокси-функция потерь.</p></div>
