@@ -15,6 +15,23 @@ The base model is **frozen**. Only a thin wrapper is trained (~2.3% of params on
 On Llama-3.1-8B Phase 2 Selective MMLU: **selective accuracy 89.1%** (base 64.6%) at 37% coverage —
 the model answers far more reliably on what it chooses to answer (see the honest-metrics caveat below).
 
+## New in v0.3.0
+
+- **A latent channel beats a text prompt.** Asking the model to "be unsure" barely moves it; the trained
+  wrapper does. Fair 2×2 on Qwen2.5-14B (both arms allowed to abstain): declining the unanswerable — text
+  prompt 0.07 → 0.07 (nothing), wrapper → **0.87**; catching the base's errors — wrapper **78%** vs a
+  prompt's 14%. The uncertainty lives in the residual stream, where a prompt can't reach it.
+  (`docs/results/qwen-14b/text-vs-latent.md`)
+- **The uncertainty knob (gain).** The injection is one runtime dial — `doubter.set_gain(x)` /
+  `META_GAIN` in llama.cpp. `gain` 0 → 1.5 turns refusals ~2% → 51% smoothly; `<0` inverts toward
+  confidence. A latent mixer, not a baked-in LoRA delta.
+- **The Watchdog (read-only sensor).** A `ConfidenceProbe` on the cognitive token tells you the model is
+  unsure and gates an external action (retrieve / clarify / escalate) — **without injecting into
+  generation** (`from meta_core import Watchdog, ConfidenceProbe`).
+- **The wrapper factory.** `metaloom build-universal --model-name N` builds a *general* uncertainty
+  wrapper for any base from a balanced diverse mix — on a 6-axis agentic suite the only variant with no
+  axis collapse. (`docs/results/qwen-14b/diverse-train-balanced.md`)
+
 ## Structure: Meta-Core + Meta-Loom + Meta-Agent + Meta-Deploy
 
 Four pip packages, each in its own folder under `meta-spider-framework/` (its own pyproject):
@@ -40,8 +57,15 @@ A validated modifier:
   optional self-correction. Phase 2 Selective MMLU on Llama-8B: selective accuracy 89.1%,
   total_recovery 90.7%.
 
+- **Watchdog** — the same signal, read-only: a `ConfidenceProbe` gates an external action without
+  touching generation.
+
 And the tooling around it:
 
+- **`gain` knob** — one runtime dial on the injection (`set_gain` / `META_GAIN`); mix N modifiers on the
+  shared residual, each with its own gain. AGC damps the self-amplifying loop over long generation.
+- **`metaloom build-universal`** — the factory: one command builds a general uncertainty wrapper for any
+  base from a balanced diverse mix (collect → train → per-axis eval → GGUF).
 - Trainer on your data (two-pass + the 5-group AdamW from the Phase 2 record)
 - BaselineComparison — the main selective-eval tool: (base) vs (base+modifiers) on a QABenchmark
   (MMLU/GSM8K/HumanEval/custom JSONL) with statistical significance (McNemar + paired t-test, no scipy)
@@ -51,8 +75,8 @@ And the tooling around it:
 ## Install
 
 ```bash
-git clone <repo-url>            # <repo-url> — this repository's address
-cd reflexion-core/meta-spider-framework
+git clone https://codeberg.org/imperius/meta-spider
+cd meta-spider
 # editable packages (Loom pulls Core+Agent); production inference — only meta-core:
 pip install -e meta-core -e meta-agent -e meta-loom
 # optional llama.cpp deploy (GGUF sidecar export):
@@ -427,18 +451,18 @@ The framework is assembled from validated implementations of the original projec
 
 - **Doubter** — a port of the original project's Phase 1-8 implementation.
 
-Current state:
+Current state (v0.3.0):
 
-- 163 smoke tests green (`tests/`)
+- Smoke tests green (`tests/`, CPU-only via a FakeLM — no GPU/network)
 - API stabilized — modular public surface: import from `meta_core` / `meta_loom` / `meta_agent`
   directly (the `meta_spider` umbrella is kept only as an optional back-compat shim)
+- **Watchdog** is back in the core (`meta_core.watchdog`) — a read-only confidence sensor
+- **`build-universal`** factory ships in Meta-Loom; a general Qwen2.5-14B wrapper is published on the Hub
 - Trained Doubter checkpoints (Qwen, Granite) are published on the Hugging Face Hub
   (each with a model card + GGUF sidecar)
 
 Absent (by design, deferred):
 
-- Watchdog (goal-keeping injector) — removed from the framework to focus on the Doubter; will return
-  as a separate module after the core stabilizes
 - Reassembler / Chronograph / Judge (research modifiers)
 
 ## Further reading
