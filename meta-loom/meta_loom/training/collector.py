@@ -94,26 +94,14 @@ class ActivationDatasetCollector:
 
     @staticmethod
     def _default_check(pred: str, truths: list[str]) -> bool:
-        """Default checker: normalized substring against any alias.
+        """Default checker — delegates to the dataset loader's checker (one source of truth).
 
-        Normalization (lower + punctuation removal) is critical: chat models
-        wrap answers in markdown (**Karl Marx**), breaking a naive substring.
+        The old local normalized-substring version matched a single-letter truth ("B")
+        anywhere inside the text — a badly skewed oracle for MCQ. The shared checker
+        extracts the CHOSEN letter for 1-char truths and normalizes markdown for the rest.
         """
-        import re
-
-        def norm(s: str) -> str:
-            s = s.lower().strip()
-            s = re.sub(r"[^\w\s]", "", s)
-            return re.sub(r"\s+", " ", s).strip()
-
-        pred_n = norm(pred)
-        if not pred_n:
-            return False
-        for truth in truths:
-            t = norm(truth)
-            if t and t in pred_n:
-                return True
-        return False
+        from meta_loom.data.dataset import check_answer_correctness
+        return check_answer_correctness(pred, list(truths))
 
     def collect(
         self,
@@ -264,13 +252,15 @@ class ActivationDatasetCollector:
 
         tokenizer = self.pipeline.tokenizer
         rng = _random.Random(0)
-        pad_id = getattr(tokenizer, "pad_token_id", 0) or 0
 
+        # EOS is appended to the target — without it the wrapper never learns to STOP after
+        # the refusal phrase (same fix as in Trainer._train_step).
+        eos = getattr(tokenizer, "eos_token", None) or ""
         full_texts, prompt_lens = [], []
         for s in batch_samples:
             target_text, _ = build_correction_target(
                 s.ground_truth, s.pass1_correct, correction_ratio, rng)
-            full_texts.append(s.input_text + target_text)
+            full_texts.append(s.input_text + target_text + eos)
             prompt_lens.append(tokenizer(s.input_text, return_tensors="pt").input_ids.shape[-1])
 
         old_side = getattr(tokenizer, "padding_side", "right")
@@ -290,7 +280,9 @@ class ActivationDatasetCollector:
             ids = input_ids[j, :real_len].detach().cpu().clone()
             labels = ids.clone()
             labels[:min(prompt_lens[j], real_len)] = -100  # prompt mask
-            labels[ids == pad_id] = -100
+            # No value-based pad mask here: the [:real_len] trim already excludes padding,
+            # and with pad==eos the old `labels[ids == pad_id] = -100` erased the REAL target
+            # EOS from supervision (the wrapper never learned to stop).
             s.cut_hidden = cut_hidden[j, :real_len].detach().cpu().to(torch.float16).clone()
             s.input_ids_full = ids
             s.labels_full = labels

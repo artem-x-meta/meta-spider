@@ -52,9 +52,20 @@ class ReflexionBuffer:
     def expand_batch(self, batch_size: int) -> torch.Tensor:
         """Broadcast slots across the batch for feeding into CA forward.
 
+        Valid cases: slots batch == batch_size (per-prompt tokens, e.g. training), or
+        slots batch == 1 broadcast to N (beams / repeats of the SAME prompt). A filled
+        multi-prompt buffer hitting a different batch size is a misconfiguration — raise
+        loudly instead of letting expand() fail cryptically (or silently feeding prompt-1's
+        tokens to other prompts).
+
         Returns:
             [batch_size, num_slots, hidden_dim] — without allocation, via expand.
         """
+        b = self.slots.shape[0]
+        if b not in (1, batch_size):
+            raise RuntimeError(
+                f"ReflexionBuffer batch mismatch: buffer holds {b} prompt(s), the forward "
+                f"batch is {batch_size}. Refill the buffer for this batch (Pass 1 per batch).")
         return self.slots.expand(batch_size, -1, -1)
 
     def clear(self) -> None:

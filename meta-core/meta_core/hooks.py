@@ -76,9 +76,14 @@ class ActivationCollector:
     def attach(self) -> None:
         """Register forward hooks on the target_layers."""
         layers = self._get_layers()
+        bad = [i for i in self.target_layers if i >= len(layers)]
+        if bad:
+            # Loud, not a silent `continue`: a skipped layer means the encoder receives
+            # fewer activations than it was built for — a misconfiguration, not a fallback.
+            raise ValueError(
+                f"target_layers {bad} out of range: the model has {len(layers)} layers "
+                f"(valid indices 0..{len(layers) - 1}).")
         for layer_idx in self.target_layers:
-            if layer_idx >= len(layers):
-                continue
             handle = layers[layer_idx].register_forward_hook(self._make_hook(layer_idx))
             self._handles.append(handle)
 

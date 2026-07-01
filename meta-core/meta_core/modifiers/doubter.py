@@ -124,6 +124,7 @@ class Doubter(Modifier):
         n_act_layers = len(target_layers)  # actual number of target layers (for encoder input)
         cross_attn_layers = list(pipeline.config.cross_attn_layers or range(pipeline.config.num_layers))
         self._cross_attn_layers = cross_attn_layers
+        self._target_layers = target_layers  # remembered for the checkpoint (see save_checkpoint)
 
         # num_cognitive_tokens: explicit override via DoubterConfig (for MultiTokenEncoder),
         # otherwise = number of target_layers (Selective/Transformer convention 1 cog per layer).
@@ -138,6 +139,7 @@ class Doubter(Modifier):
         if self.encoder is not None and len(self.ca_modules) > 0:
             self._install_ca_hooks(pipeline)
             self._load_pending_state()
+            self.set_inference_mode()
             return
 
         # 1. Encoder
@@ -185,6 +187,12 @@ class Doubter(Modifier):
 
         # 5. If it came from from_checkpoint — load the pending state_dicts
         self._load_pending_state()
+
+        # 6. Inference-safe default: eval mode (dropout OFF). nn.Module defaults to
+        # training=True, so without this every generate/eval after `from_checkpoint +
+        # attach` ran CA attn_dropout stochastically. The Trainer flips .train()/.eval()
+        # itself per epoch, so training is unaffected.
+        self.set_inference_mode()
 
     @staticmethod
     def _infer_device(model: Any) -> torch.device:
@@ -244,6 +252,16 @@ class Doubter(Modifier):
 
             handle = layers[layer_idx].register_forward_hook(make_hook(ca_module, buffer))
             self._ca_hook_handles.append(handle)
+
+    def set_inference_mode(self) -> None:
+        """Put the wrapper into eval mode (dropout/etc. OFF) — deterministic inference.
+
+        Called automatically at the end of `on_attach`. The Trainer switches the modules
+        back to .train() at the start of each epoch and to .eval() for validation.
+        """
+        if isinstance(self.encoder, nn.Module):
+            self.encoder.eval()
+        self.ca_modules.eval()
 
     def on_detach(self) -> None:
         """Remove all CA hooks."""
@@ -326,6 +344,10 @@ class Doubter(Modifier):
         doubter = cls(config)
         doubter._pending_encoder_state = ckpt.get("encoder_state")
         doubter._pending_ca_state = ckpt.get("ca_state", {})
+        # v1.1: the layer indices the checkpoint was trained on (absent in v1.0 — then the
+        # only guard is the strict ca_state key match in _load_pending_state).
+        doubter._pending_expected_cross = ckpt.get("cross_attn_layers") or None
+        doubter._pending_expected_target = ckpt.get("target_layers") or None
         return doubter
 
     def save_checkpoint(self, path: str) -> None:
@@ -352,8 +374,13 @@ class Doubter(Modifier):
         }
         torch.save(
             {
-                "format_version": "1.0",
+                "format_version": "1.1",
                 "config": cfg_dict,
+                # The layer indices the wrapper was trained on (v1.1). The wrapper is
+                # calibrated to THESE layers; loading it onto a pipeline with different
+                # target/cross_attn layers is verified at attach (see _load_pending_state).
+                "target_layers": list(getattr(self, "_target_layers", []) or []),
+                "cross_attn_layers": list(self._cross_attn_layers or []),
                 "encoder_state": self.encoder.state_dict()
                 if isinstance(self.encoder, nn.Module) else None,
                 "ca_state": ca_state,
@@ -362,16 +389,44 @@ class Doubter(Modifier):
         )
 
     def _load_pending_state(self) -> None:
-        """Internal: load the pending state from from_checkpoint after on_attach."""
+        """Internal: load the pending state from from_checkpoint after on_attach.
+
+        STRICT: the checkpoint's layer set must match the pipeline's. Previously a mismatch
+        silently loaded only the intersecting CA layers (trained encoder + randomly-initialized
+        CA on the rest) — a half-broken wrapper with no warning.
+        """
         pending_enc = getattr(self, "_pending_encoder_state", None)
         pending_ca = getattr(self, "_pending_ca_state", None)
+
+        # v1.1 checkpoints carry their layer indices — verify against the pipeline config.
+        exp_cross = getattr(self, "_pending_expected_cross", None)
+        exp_target = getattr(self, "_pending_expected_target", None)
+        if exp_cross and list(exp_cross) != list(self._cross_attn_layers):
+            raise RuntimeError(
+                f"Checkpoint/pipeline mismatch: the checkpoint was trained with "
+                f"cross_attn_layers={list(exp_cross)}, but the pipeline is configured with "
+                f"{list(self._cross_attn_layers)}. Set the same layers in MetaSpiderConfig "
+                f"(usually via the run.json manifest).")
+        if exp_target and list(exp_target) != list(getattr(self, "_target_layers", []) or []):
+            raise RuntimeError(
+                f"Checkpoint/pipeline mismatch: the checkpoint was trained with "
+                f"target_layers={list(exp_target)}, but the pipeline is configured with "
+                f"{list(getattr(self, '_target_layers', []))}. Set the same layers in "
+                f"MetaSpiderConfig (usually via the run.json manifest).")
+
         if pending_enc is not None and isinstance(self.encoder, nn.Module):
             self.encoder.load_state_dict(pending_enc)
             self._pending_encoder_state = None
         if pending_ca:
+            ckpt_keys = set(pending_ca.keys())
+            module_keys = set(self.ca_modules.keys())
+            if ckpt_keys != module_keys:
+                raise RuntimeError(
+                    f"Checkpoint/pipeline mismatch: ca_state layers {sorted(ckpt_keys, key=int)} "
+                    f"!= pipeline cross_attn layers {sorted(module_keys, key=int)}. Refusing a "
+                    f"partial load (it would leave the missing layers randomly initialized).")
             for k, state in pending_ca.items():
-                if k in self.ca_modules:
-                    self.ca_modules[k].load_state_dict(state)
+                self.ca_modules[k].load_state_dict(state)
             self._pending_ca_state = None
 
     # ============================================================

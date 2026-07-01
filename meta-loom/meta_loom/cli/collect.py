@@ -178,6 +178,10 @@ def add_args(p) -> None:
     p.add_argument("--mcq-direct", action="store_true",
                    help="preset: --no-think + the standard answer-suffix 'answer with ONLY the letter' "
                         "(MMLU and other A/B/C/D on thinking/verbose instruct models)")
+    p.add_argument("--abstain-affordance", action="store_true",
+                   help="append an explicit 'you may say you are not confident' instruction to every "
+                        "question — the fair baseline: BOTH eval arms (base and Doubter) get the same "
+                        "refusal affordance, so the refusal delta is not a prompt artifact")
     p.add_argument("--offset", type=int, default=0)
     p.add_argument("--collect-batch", type=int, default=4)
     p.add_argument("--collect-chunk", type=int, default=250)
@@ -195,10 +199,21 @@ def add_args(p) -> None:
 MCQ_SUFFIX = ("\n\nAnswer with ONLY the letter of the correct option "
               "(A, B, C, or D). Do not explain.")
 
+# Abstain affordance: gives BOTH eval arms the explicit option to refuse. Without it the
+# base is structurally unable to refuse (an anti-refusal MCQ prompt) → base refusal ≈ 0 is a
+# prompt artifact, and the Doubter's added-refusal delta is overstated. Rides on answer_suffix
+# → lands inside the user turn at collect and flows through train AND eval via input_text —
+# so the affordance reaches both arms automatically (the fair-baseline lesson).
+# The wording matches REFUSAL_PHRASES ("not confident") so refusal detection fires.
+ABSTAIN_AFFORDANCE_SUFFIX = (
+    ' If you are not confident in the answer, reply "I\'m not confident enough to answer" '
+    "instead of guessing.")
+
 
 def resolve_prompt_flags(no_think: bool, mcq_direct: bool,
-                         answer_suffix: Optional[str]) -> tuple[Optional[str], Optional[dict]]:
-    """(--no-think/--mcq-direct/--answer-suffix) → (answer_suffix, chat_template_kwargs).
+                         answer_suffix: Optional[str],
+                         abstain_affordance: bool = False) -> tuple[Optional[str], Optional[dict]]:
+    """(--no-think/--mcq-direct/--answer-suffix/--abstain-affordance) → (answer_suffix, chat_template_kwargs).
 
     Fixes the null result on thinking models: without disabling reasoning the template opens
     <think> and a short pass1 never reaches the answer (Qwen3.5/Gemma-it/Granite). --mcq-direct =
@@ -209,6 +224,8 @@ def resolve_prompt_flags(no_think: bool, mcq_direct: bool,
     """
     nt = bool(no_think or mcq_direct)
     suffix = answer_suffix or (MCQ_SUFFIX if mcq_direct else None)
+    if abstain_affordance:
+        suffix = (suffix or "") + ABSTAIN_AFFORDANCE_SUFFIX
     return suffix, ({"enable_thinking": False, "thinking": False} if nt else None)
 
 
@@ -217,7 +234,8 @@ def run(args) -> None:
     # Requires late CA (an explicit list or 'late'); 'late_slice' is resolved by the framework.
     target_layers = "late_slice" if getattr(args, "slice", False) else args.target_layers
     answer_suffix, chat_template_kwargs = resolve_prompt_flags(
-        args.no_think, args.mcq_direct, args.answer_suffix)
+        args.no_think, args.mcq_direct, args.answer_suffix,
+        abstain_affordance=getattr(args, "abstain_affordance", False))
 
     manifest = {
         "format_version": C.MANIFEST_VERSION,

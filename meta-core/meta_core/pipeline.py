@@ -310,18 +310,21 @@ class MetaSpiderPipeline:
         for m in self.modifiers:
             m.on_pre_forward()
 
-        # Clear the ActivationCollector and enable recording
+        # Clear the ActivationCollector and enable recording. try/finally: an exception
+        # mid-forward must not leave the collector unfrozen-recording (or the buffers stale).
         self.collector.clear()
         self.collector.unfreeze()
+        try:
+            # Forward without generation
+            with torch.no_grad():
+                self.model(input_ids=input_ids, attention_mask=attention_mask)
 
-        # Forward without generation
-        with torch.no_grad():
-            self.model(input_ids=input_ids, attention_mask=attention_mask)
-
-        # Pass the activations to all modifiers — they fill their buffers
-        activations = self.collector.get_snapshot()
-        for m in self.modifiers:
-            m.on_post_forward(activations)
+            # Pass the activations to all modifiers — they fill their buffers
+            activations = self.collector.get_snapshot()
+            for m in self.modifiers:
+                m.on_post_forward(activations)
+        finally:
+            self.collector.freeze()
 
     def _run_pass2(
         self,
@@ -336,17 +339,18 @@ class MetaSpiderPipeline:
         if self.collector is not None:
             self.collector.freeze()
 
-        outputs = self.model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_new_tokens=max_new_tokens,
-            **generate_kwargs,
-        )
-
-        # Unfreeze the collector for the next call. Do NOT clear the modifiers' buffers —
-        # each modifier decides for itself in `on_pre_forward` (Doubter clears its buffer).
-        if self.collector is not None:
-            self.collector.unfreeze()
+        try:
+            outputs = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_new_tokens=max_new_tokens,
+                **generate_kwargs,
+            )
+        finally:
+            # Unfreeze the collector for the next call. Do NOT clear the modifiers' buffers —
+            # each modifier decides for itself in `on_pre_forward` (Doubter clears its buffer).
+            if self.collector is not None:
+                self.collector.unfreeze()
 
         return outputs
 

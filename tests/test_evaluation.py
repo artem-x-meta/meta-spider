@@ -30,8 +30,15 @@ def test_classify_action_refuse():
 
 
 def test_classify_action_correct():
+    # v0.3.1: CORRECTION_PHRASES tightened to the TRAINED template ("Wait, the correct…") —
+    # bare "actually"/"wait"/"let me think" fired on ordinary speech/CoT and inflated the
+    # correction metrics.
     assert classify_action("Wait, the correct answer is B.") == "correct"
-    assert classify_action("Actually, I think it's 42.") == "correct"
+    assert classify_action("Actually, the correct answer is 42.") == "correct"
+    assert classify_action("Let me reconsider my approach.") == "correct"
+    # ordinary speech no longer counts as a self-correction:
+    assert classify_action("Actually, I think it's 42.") == "confirm"
+    assert classify_action("Wait, let me think about B.") == "confirm"
 
 
 def test_classify_action_confirm():
@@ -40,7 +47,7 @@ def test_classify_action_confirm():
 
 
 def test_compute_metrics_basic():
-    preds = ["Paris", "I'm not sure", "Wait, actually Madrid"]
+    preds = ["Paris", "I'm not sure", "Wait, the correct answer is Madrid"]
     truths = ["Paris", "London", "Madrid"]
     m = compute_metrics(preds, truths)
     assert m["n_total"] == 3
@@ -51,7 +58,7 @@ def test_compute_metrics_basic():
 
 
 def test_compute_metrics_with_pass1():
-    preds = ["Paris", "I'm not sure", "Wait, actually Madrid"]
+    preds = ["Paris", "I'm not sure", "Wait, the correct answer is Madrid"]
     truths = ["Paris", "London", "Madrid"]
     pass1 = [True, False, False]
     m = compute_metrics(preds, truths, pass1_correct=pass1)

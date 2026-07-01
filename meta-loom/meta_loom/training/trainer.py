@@ -354,6 +354,24 @@ class Trainer:
                 for s in train_samples
             ]
 
+        # Val targets are built ONCE with a DEDICATED rng: rebuilding them every epoch with the
+        # shared rng made val_loss incomparable across epochs (random refuse/correct mix →
+        # noisy early-stop/best-model) and shifted the train shuffle stream.
+        val_targets: Optional[list[tuple[str, str]]] = None
+        if val_samples is not None and len(val_samples) > 0:
+            if val_targets_by_sample is not None:
+                val_targets = val_targets_by_sample
+            else:
+                val_rng = _random.Random(cfg.seed + 1)
+                val_targets = [
+                    build_correction_target(
+                        s.ground_truth, s.pass1_correct,
+                        correction_ratio=cfg.correction_ratio,
+                        rng=val_rng,
+                    )
+                    for s in val_samples
+                ]
+
         # GradScaler: auto with an fp16 base, otherwise off (bf16/fp32 don't need it).
         # The first floating-point parameter = the compute dtype (skip quantized int weights).
         use_scaler = cfg.use_grad_scaler
@@ -389,6 +407,19 @@ class Trainer:
             total_loss = 0.0
             n_batches = 0
             opt_step = 0
+            since_step = 0            # micro-batches accumulated since the last optimizer step
+            self._n_all_masked = 0    # samples whose target was fully truncated away
+
+            def _opt_step():
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    modifier.get_trainable_parameters(), cfg.grad_clip,
+                )
+                scaler.step(optimizer)
+                scaler.update()
+                if scheduler is not None:
+                    scheduler.step()
+                optimizer.zero_grad()
 
             for batch_start in range(0, len(indices), cfg.batch_size):
                 batch_idx = indices[batch_start:batch_start + cfg.batch_size]
@@ -402,33 +433,31 @@ class Trainer:
                 scaler.scale(loss / cfg.grad_accumulation).backward()
                 total_loss += loss.item()
                 n_batches += 1
+                since_step += 1
 
-                if (n_batches % cfg.grad_accumulation) == 0:
-                    scaler.unscale_(optimizer)
-                    torch.nn.utils.clip_grad_norm_(
-                        modifier.get_trainable_parameters(), cfg.grad_clip,
-                    )
-                    scaler.step(optimizer)
-                    scaler.update()
-                    if scheduler is not None:
-                        scheduler.step()
-                    optimizer.zero_grad()
+                if since_step == cfg.grad_accumulation:
+                    _opt_step()
                     opt_step += 1
+                    since_step = 0
+
+            # Flush the trailing partial accumulation window: previously these gradients were
+            # silently wiped by zero_grad at the start of the next epoch (lost samples).
+            if since_step > 0:
+                _opt_step()
+                opt_step += 1
+                since_step = 0
+
+            if self._n_all_masked:
+                print(f"  [warn] {self._n_all_masked} sample(s) skipped: the target was fully "
+                      f"truncated away (prompt longer than max_seq_len={cfg.max_seq_len}) — "
+                      f"raise max_seq_len or shorten the prompts.", flush=True)
 
             train_loss = total_loss / max(n_batches, 1)
             history["train_loss"].append(train_loss)
 
-            # Validation
+            # Validation (targets prebuilt once before the loop)
             val_loss = None
-            if val_samples is not None and len(val_samples) > 0:
-                val_targets = val_targets_by_sample or [
-                    build_correction_target(
-                        s.ground_truth, s.pass1_correct,
-                        correction_ratio=cfg.correction_ratio,
-                        rng=self._rng,
-                    )
-                    for s in val_samples
-                ]
+            if val_targets is not None:
                 val_loss = self._validate(val_samples, val_targets)
                 history["val_loss"].append(val_loss)
 
@@ -528,10 +557,13 @@ class Trainer:
             # consistency with what cut_hidden was captured on in the collector).
             input_ids, attention_mask, labels, cut_hidden = self._collate_slice(samples, device)
         else:
-            # Prepare input_ids + labels (mask prompt)
+            # Prepare input_ids + labels (mask prompt). The EOS token is APPENDED to the
+            # target: without it the wrapper never learns to STOP after the refusal phrase
+            # (observed as rambling continuations after "I'm not confident...").
+            eos = getattr(tokenizer, "eos_token", None) or ""
             input_texts = [s.input_text for s in samples]
             target_texts = [t[0] for t in targets]
-            full_texts = [a + b for a, b in zip(input_texts, target_texts)]
+            full_texts = [a + b + eos for a, b in zip(input_texts, target_texts)]
             encodings = tokenizer(
                 full_texts,
                 padding=True,
@@ -550,7 +582,18 @@ class Trainer:
                 inp_ids = tokenizer(inp_text, return_tensors="pt").input_ids
                 inp_len = min(inp_ids.shape[-1], input_ids.shape[-1])
                 labels[i, :inp_len] = -100
-            labels[labels == pad_id] = -100
+            # Mask PADDING by position (attention_mask), NOT by token value: pad_token is
+            # usually = eos_token, and the old value-mask erased the real EOS from the labels
+            # → no stop supervision. Value-mask remains only as a fallback without a mask.
+            if attention_mask is not None:
+                labels[attention_mask == 0] = -100
+            else:
+                labels[labels == pad_id] = -100
+            # Truncation ate the whole target (long prompt + max_seq_len) → nothing to learn
+            # from this batch; count it instead of dying silently via the NaN-skip.
+            if (labels != -100).sum().item() == 0:
+                self._n_all_masked = getattr(self, "_n_all_masked", 0) + len(samples)
+                return None
 
         # Pass 1: cached activations → encoder → buffer
         target_layers = sorted(samples[0].activations.keys())

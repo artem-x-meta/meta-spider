@@ -41,12 +41,14 @@ REFUSAL_PHRASES = (
     "i don't know",
 )
 
+# Tightened (v0.3.1): the old list ("actually", "wait", "let me think") fired on ordinary
+# speech/CoT and inflated the correction metrics. Match the TRAINED correction template
+# (" Wait, the correct answer is …") and unambiguous phrasings only.
 CORRECTION_PHRASES = (
     "reconsider",
-    "actually",
-    "wait",
-    "correction",
-    "let me think",
+    "correction:",
+    "wait, the correct",
+    "actually, the correct",
 )
 
 
@@ -86,7 +88,10 @@ def compute_metrics(
     measure calibration — this was a project-wide bug (see docs/results/honest-metrics-correction.md).
     """
     if check_correctness is None:
-        check_correctness = lambda p, t: t.lower().strip() in p.lower().strip()
+        # Same checker as the dataset loader (word-boundary MCQ letters, normalization) —
+        # the old naive substring here ("b" matched inside any word) disagreed with it.
+        from meta_loom.data.dataset import check_answer_correctness as _check
+        check_correctness = lambda p, t: _check(p, [t])
 
     n_total = len(predictions)
     correct_flags = [check_correctness(p, t) for p, t in zip(predictions, ground_truths)]

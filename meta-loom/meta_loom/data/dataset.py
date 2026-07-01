@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import re
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 __all__ = [
     "load_qa_dataset", "check_answer_correctness", "check_gsm8k_answer",
@@ -141,19 +141,61 @@ def check_gsm8k_answer(generated: str, ground_truth) -> bool:
     return False
 
 
+_MCQ_ANSWER_PATTERNS = (
+    # explicit statements win: "answer is B", "answer: (B)", "correct option is B", "**B**)…"
+    r"(?:answer|option|choice)\s*(?:is|:)?\s*\*{0,2}\(?([A-Ja-j])\)?(?:\b|[).:*])",
+    # a leading bare letter: "B", "B).", "(B) …", "B: …"
+    r"^\s*\*{0,2}\(?([A-Ja-j])\)?[).:\s*]",
+)
+
+
+def extract_mcq_letter(generated: str) -> Optional[str]:
+    """Extract the chosen MCQ letter from a (possibly verbose) generation; None if ambiguous.
+
+    Order: explicit "answer is X" patterns → a leading bare letter → the ONLY distinct
+    standalone letter in the text. If several distinct letters are mentioned with no explicit
+    pick ("Between B and C…"), returns None — the caller should treat it as not-an-answer.
+    """
+    text = generated.strip()
+    if not text:
+        return None
+    for pat in _MCQ_ANSWER_PATTERNS:
+        m = re.search(pat, text, re.IGNORECASE | re.MULTILINE)
+        if m:
+            return m.group(1).upper()
+    standalone = {m.group(1).upper() for m in re.finditer(r"\b([A-Ja-j])\b", text)}
+    if len(standalone) == 1:
+        return standalone.pop()
+    return None
+
+
 def check_answer_correctness(generated: str, ground_truths: List[str]) -> bool:
-    """Содержит ли вывод хотя бы один эталонный ответ (нормализованное substring-совпадение;
-    для коротких строк, как буквы MC, — по границам слов, чтобы 'b' ≠ 'abstract')."""
+    """Содержит ли вывод хотя бы один эталонный ответ (нормализованное substring-совпадение).
+
+    Для ОДНОБУКВЕННЫХ истин (MCQ) — извлечение выбранной буквы через `extract_mcq_letter`:
+    старое `\\bB\\b`-совпадение засчитывало «Between B and C, I'd pick C» за B (буква
+    упомянута ≠ буква выбрана) и перекашивало оракул pass1_correct на многословных выводах.
+    Неоднозначный вывод (несколько букв, нет явного «answer is X») теперь считается НЕверным —
+    консервативный оракул для калибровки безопаснее оптимистичного."""
     if not generated or not ground_truths:
         return False
     gen = normalize_answer(generated)
+    letter_cache: Optional[str] = None
+    letter_extracted = False
     for truth in ground_truths:
         if not truth:
             continue
         tl = normalize_answer(truth)
         if not tl or not gen:
             continue
-        if min(len(tl), len(gen)) <= 2:
+        if len(tl) == 1 and tl.isalpha():
+            # MCQ letter: compare against the EXTRACTED choice, not "mentioned anywhere".
+            if not letter_extracted:
+                letter_cache = extract_mcq_letter(generated)
+                letter_extracted = True
+            if letter_cache is not None and letter_cache.lower() == tl:
+                return True
+        elif min(len(tl), len(gen)) <= 2:
             short = tl if len(tl) <= 2 else gen
             long = gen if len(tl) <= 2 else tl
             if short == long or re.search(r"\b" + re.escape(short) + r"\b", long):

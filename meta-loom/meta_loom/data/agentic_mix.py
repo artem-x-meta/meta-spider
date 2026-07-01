@@ -65,14 +65,51 @@ def to_tools(ts):
     return out
 
 
-def tool_call_text(name: str, args) -> str:
-    """Native Qwen-style tool call (what the model emits) for a target string."""
+# Native tool-call TARGET formats per model family. The prompt side is model-agnostic
+# (the tokenizer renders its own template), but the target the wrapper is trained to EMIT
+# must match the family's native syntax — training a Llama wrapper to emit Qwen's
+# `<tool_call>` tags would produce calls its own parser never fires on.
+TOOL_CALL_FORMATS = {
+    # Qwen2.5 / Hermes-style
+    "qwen": '<tool_call>\n{{"name": "{name}", "arguments": {args}}}\n</tool_call>',
+    # Granite-3.x
+    "granite": '<|tool_call|>[{{"name": "{name}", "arguments": {args}}}]',
+    # Llama-3.x (json tool calling; uses "parameters", no wrapper tags)
+    "llama": '{{"name": "{name}", "parameters": {args}}}',
+}
+
+
+def detect_tool_call_format(tokenizer) -> str:
+    """Best-effort detection of the family's native tool-call syntax from the chat template.
+
+    Returns a key of TOOL_CALL_FORMATS. Unknown template → "qwen" with a LOUD warning
+    (the historical behavior, correct for Qwen/Hermes-style models only).
+    """
+    tpl = getattr(tokenizer, "chat_template", None) or ""
+    if "<tool_call>" in tpl:
+        return "qwen"
+    if "<|tool_call|>" in tpl:
+        return "granite"
+    if "<|python_tag|>" in tpl or '"parameters"' in tpl:
+        return "llama"
+    print("  [warn] agentic_mix: could not detect the model's native tool-call syntax from "
+          "its chat template — falling back to the Qwen '<tool_call>' format. If the target "
+          "model is not Qwen/Hermes-style, pass tool_call_format= explicitly "
+          "(one of: " + ", ".join(sorted(TOOL_CALL_FORMATS)) + ").", flush=True)
+    return "qwen"
+
+
+def tool_call_text(name: str, args, fmt: str = "qwen") -> str:
+    """Native tool call (what the model emits) for a target string, in the given family format."""
     if isinstance(args, str):
         try:
             args = json.loads(args)
         except Exception:
             args = {}
-    return '<tool_call>\n{"name": "%s", "arguments": %s}\n</tool_call>' % (name, json.dumps(args))
+    template = TOOL_CALL_FORMATS.get(fmt)
+    if template is None:
+        raise ValueError(f"unknown tool_call_format {fmt!r}; one of {sorted(TOOL_CALL_FORMATS)}")
+    return template.format(name=name, args=json.dumps(args))
 
 
 def make_example(tokenizer, user: str, tools, target: str, label: str, *, system: str) -> dict:
@@ -100,14 +137,27 @@ def build_training_mix(
     exclude_questions: Optional[set] = None,
     seed: int = 0,
     system: str = SYSTEM_DEFAULT,
+    tool_call_format: str = "auto",
     verbose: bool = True,
 ) -> tuple[list[str], list[str]]:
     """Build the balanced diverse mix. Returns (prompts, specs). Requires `datasets` (HF) + network.
 
     `exclude_questions` — normalized test-suite questions to drop (leakage guard). `per_class` items
     per class-source (memory pulls from two sources → ~2× memory). Items over `cap_tok` tokens skipped.
+    `tool_call_format` — the native syntax of the tool-call TARGETS ("auto" = detect from the
+    tokenizer's chat template; see TOOL_CALL_FORMATS).
+
+    Honest caveat on "generality": the held-out suite v1 draws from the SAME three sources
+    (When2Call / PopQA / SQuAD2) as this mix, disjoint only by exact question text — suite scores
+    partially reflect template familiarity, not pure transfer. A source-disjoint suite (v2) is the
+    real generality test.
     """
     from datasets import load_dataset
+
+    if tool_call_format == "auto":
+        tool_call_format = detect_tool_call_format(tokenizer)
+    if verbose:
+        print(f"  tool-call target format: {tool_call_format}", flush=True)
 
     exclude = exclude_questions or set()
     rng = random.Random(seed)
@@ -141,7 +191,7 @@ def build_training_mix(
             continue
         try:
             calls = json.loads(mt.group(1))
-            tgt = tool_call_text(calls[0]["name"], calls[0].get("arguments", {}))
+            tgt = tool_call_text(calls[0]["name"], calls[0].get("arguments", {}), fmt=tool_call_format)
         except Exception:
             continue
         it = make_example(tokenizer, user, tools, tgt, "call", system=system)
@@ -192,7 +242,7 @@ def build_training_mix(
             it = make_example(tokenizer, user, None, f"{gold}", "memory", system=system)
         elif sp <= 100 and pc["lookup"] < per_class:
             it = make_example(tokenizer, user, SEARCH_TOOL,
-                              tool_call_text("search", {"query": user[:80]}), "lookup", system=system)
+                              tool_call_text("search", {"query": user[:80]}, fmt=tool_call_format), "lookup", system=system)
         else:
             continue
         if _len(it) > cap_tok:

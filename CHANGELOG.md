@@ -1,5 +1,52 @@
 # Changelog
 
+## v0.3.1 — arbiter-audit fixes (correctness + honest-metrics hardening)
+
+An external-arbiter audit of the whole framework; every confirmed finding fixed.
+
+### Fixed
+- **Inference ran with dropout ON.** `.eval()` was only ever called inside the Trainer; the pure
+  inference path (`Doubter.from_checkpoint` → `attach` → generate/eval) left the CA modules in
+  training mode, so `attn_dropout(0.1)` fired on every token of every CA layer — stochastic
+  injection even under greedy decoding. `on_attach` now ends with `set_inference_mode()` (the
+  Trainer still flips `.train()`/`.eval()` itself). **Re-measure published numbers** — expect the
+  wrapper's metrics to improve slightly (noise removed); conclusions should hold.
+- **Silent partial checkpoint load.** A checkpoint attached to a pipeline with different layers
+  loaded only the intersecting CA modules and left the rest randomly initialized — no warning.
+  Now: checkpoints (v1.1) carry `target_layers`/`cross_attn_layers`, attach verifies them, and a
+  `ca_state` key mismatch raises instead of half-loading.
+- **No stop supervision in training targets.** Targets carried no EOS, and the `labels[labels ==
+  pad_id] = -100` mask (with the common pad==eos setup) erased even a real EOS — the wrapper never
+  learned to STOP after the refusal phrase (observed as rambling continuations). Targets now end
+  with the tokenizer's EOS; padding is masked BY POSITION via attention_mask (value-mask only as a
+  maskless fallback). Same fix in the slice-collector path and `make_labels_with_prompt_mask`.
+- **Val loss was incomparable across epochs.** With `correction_ratio>0`, val targets were
+  re-sampled every epoch from the shared RNG (noisy early-stop/best-model, shifted train shuffle).
+  Val targets are now built once, from a dedicated RNG.
+- **MCQ oracle over-counted verbose answers.** A single-letter truth matched `\bB\b` anywhere
+  ("Between B and C, I'd pick C" counted as B). `check_answer_correctness` now EXTRACTS the chosen
+  letter (`extract_mcq_letter`: explicit "answer is X" → leading letter → the only distinct
+  letter; ambiguous → not correct). The harness/collector default checkers now delegate to the
+  same function (three inconsistent checkers → one).
+- **Correction metrics fired on ordinary speech.** `CORRECTION_PHRASES` tightened to the trained
+  template ("wait, the correct…"); bare "actually"/"wait"/"let me think" no longer count.
+- Trailing gradient-accumulation window is flushed (was silently wiped by next epoch's
+  `zero_grad`); fully-truncated targets are counted and warned about (were silently NaN-skipped);
+  out-of-range `target_layers` raise instead of a silent skip; `ReflexionBuffer.expand_batch`
+  raises on a filled-buffer/batch mismatch; collector freeze/unfreeze wrapped in try/finally.
+
+### Added
+- **`--abstain-affordance` (collect)** — the fair-baseline lesson as a flag: appends an explicit
+  "you may say you are not confident" instruction inside the user turn, so BOTH eval arms (base
+  and Doubter) get the same refusal affordance and the refusal delta is not a prompt artifact.
+- **`--tool-call-format auto|qwen|granite|llama` (build-universal / agentic_mix)** — the factory's
+  tool-call TARGETS previously hardcoded Qwen's `<tool_call>` syntax while claiming
+  model-agnosticism; the format is now detected from the chat template (with a loud fallback
+  warning) or set explicitly.
+- Honest-generality caveat documented: suite v1 shares sources (When2Call/PopQA/SQuAD2) with the
+  diverse mix — a source-disjoint suite v2 is the real generality test.
+- Tests `tests/test_arbiter_fixes.py` (14). Suite 153 → 164.
+
 ## v0.3.0 — the universal-Doubter factory (`build-universal`)
 
 ### Added

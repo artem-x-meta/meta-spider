@@ -135,21 +135,25 @@ def make_labels_with_prompt_mask(
     prompt_len: int,
     pad_token_id: int,
     ignore_index: int = -100,
+    attention_mask=None,
 ):
     """Make labels from input_ids with prompt + padding positions masked.
 
     Used in DataLoader collate: tokenize(input + target) → full input_ids,
     then labels = input_ids.clone(), but the first prompt_len positions are masked,
-    and pad tokens are masked too.
+    and padding is masked too.
 
     Args:
         input_ids: [B, seq_len] from the tokenizer.
         prompt_len: length of the prompt part (without target).
-        pad_token_id: the tokenizer's pad-token id.
+        pad_token_id: the tokenizer's pad-token id (fallback when attention_mask is None).
         ignore_index: value to use for masked positions (default -100).
+        attention_mask: [B, seq_len] — preferred way to mask padding BY POSITION. With the
+            common pad==eos setup, the value-based fallback also erases the real target EOS
+            from supervision (the wrapper never learns to stop) — pass the mask when you can.
 
     Returns:
-        labels of the same shape, with -100 on the prompt and pad positions.
+        labels of the same shape, with -100 on the prompt and padding positions.
 
     Port from publish/github/src/phase2_selective_llama8b/03_train.py:collate_batch
     """
@@ -157,7 +161,10 @@ def make_labels_with_prompt_mask(
     seq_len = input_ids.shape[-1]
     cut = min(prompt_len, seq_len)
     labels[..., :cut] = ignore_index
-    labels[labels == pad_token_id] = ignore_index
+    if attention_mask is not None:
+        labels[attention_mask == 0] = ignore_index
+    else:
+        labels[labels == pad_token_id] = ignore_index
     return labels
 
 

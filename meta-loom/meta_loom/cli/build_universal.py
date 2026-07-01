@@ -47,6 +47,7 @@ def build_universal_stage(
     quantization: Optional[str] = None,
     init_from: Optional[str] = None,
     suite_path: Optional[str] = None,
+    tool_call_format: str = "auto",
     eval_suite: bool = False,
     eval_axes: Optional[list] = None,
     export_gguf: bool = False,
@@ -103,7 +104,8 @@ def build_universal_stage(
         if verbose and exclude:
             print(f"  leakage guard: excluding {len(exclude)} suite questions from training", flush=True)
         prompts, specs = build_training_mix(tok, per_class=per_class, cap_tok=cap_tok,
-                                            exclude_questions=exclude, verbose=verbose)
+                                            exclude_questions=exclude,
+                                            tool_call_format=tool_call_format, verbose=verbose)
     else:
         prompts, specs = mix
 
@@ -192,6 +194,9 @@ def add_args(p) -> None:
                    help="start from an existing Doubter checkpoint (e.g. continue a QA wrapper)")
     p.add_argument("--suite", default=None,
                    help="held-out suite json — its questions are EXCLUDED from training (leakage guard)")
+    p.add_argument("--tool-call-format", default="auto",
+                   help="native syntax of the tool-call TARGETS: auto (detect from the chat "
+                        "template) / qwen / granite / llama")
     p.add_argument("--eval", action="store_true",
                    help="after training, run a per-axis log-prob eval (base vs wrapper) on --suite "
                         "→ suite_eval.json (floor / commit_mean). Action axes are exact; knowledge "
@@ -211,6 +216,7 @@ def run(args) -> None:
         target_layers=args.target_layers, cross_attn_layers=args.cross_attn_layers,
         encoder_type=args.encoder_type, dtype=args.dtype, quantization=args.quantization,
         init_from=args.init_from, suite_path=args.suite,
+        tool_call_format=args.tool_call_format,
         eval_suite=args.eval, export_gguf=args.export_gguf,
         device=args.device, gradient_checkpointing=args.gradient_checkpointing,
         max_memory=C.parse_max_memory(args.max_memory),

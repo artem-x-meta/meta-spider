@@ -32,7 +32,7 @@ pip install -e meta-core -e meta-agent -e meta-loom
 pip install -e meta-deploy          # optional (GGUF export)
 pip install -e . --no-deps          # optional umbrella (meta_spider shim)
 
-# tests — CPU-only, no GPU/network needed (run from framework root). ~153 pass.
+# tests — CPU-only, no GPU/network needed (run from framework root). ~164 pass.
 python -m pytest tests/ -q
 python -m pytest tests/test_build_universal.py -q   # a single file
 
@@ -107,7 +107,7 @@ metadeploy export --run-dir runs/my         # → doubter_sidecar.gguf
 - `meta-deploy/meta_deploy/export.py` — `export_from_run_dir` / `export_sidecar` (GGUF).
 - `docs-site/index.html` — the static docs (EN+RU). Published on Codeberg Pages from the **`pages`** branch
   (site content at root); `main` holds it under `docs-site/`. Assets in `docs-site/assets/*.svg`.
-- `CHANGELOG.md` — release notes (currently v0.3.0).
+- `CHANGELOG.md` — release notes (currently v0.3.1).
 
 ## Conventions
 
