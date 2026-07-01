@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 530" font-family="-apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#8a93a6"/>
+    </marker>
+    <marker id="arro" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#f0b86e"/>
+    </marker>
+  </defs>
+
+  <rect x="0.5" y="0.5" width="899" height="529" rx="14" fill="#11141b" stroke="#262b37"/>
+  <text x="40" y="42" fill="#cfd6e2" font-size="15" font-weight="700">Сторож (Watchdog) — датчик неуверенности «только чтение»</text>
+  <text x="40" y="62" fill="#9aa3b2" font-size="11">читает сигнал и гейтит внешнее действие — ничего не впрыскивая в генерацию.</text>
+
+  <!-- ===== путь чтения ===== -->
+  <g>
+    <rect x="40" y="100" width="120" height="52" rx="8" fill="#0e1622" stroke="#3a4456"/>
+    <text x="100" y="124" fill="#cfd6e2" font-size="11.5" text-anchor="middle">запрос</text>
+    <text x="100" y="140" fill="#7a8493" font-size="9.5" text-anchor="middle">«какой API для X?»</text>
+
+    <path d="M160,126 L196,126" stroke="#8a93a6" stroke-width="2" marker-end="url(#arr)"/>
+
+    <rect x="200" y="100" width="140" height="52" rx="8" fill="#0e1622" stroke="#3a4456"/>
+    <text x="270" y="122" fill="#cfd6e2" font-size="11.5" text-anchor="middle">замороженная LLM</text>
+    <text x="270" y="138" fill="#7a8493" font-size="9.5" text-anchor="middle">Pass-1 (только чтение)</text>
+
+    <path d="M340,126 L376,126" stroke="#8a93a6" stroke-width="2" marker-end="url(#arr)"/>
+
+    <rect x="380" y="100" width="130" height="52" rx="8" fill="#0e1622" stroke="#3a4456"/>
+    <text x="445" y="122" fill="#cfd6e2" font-size="11.5" text-anchor="middle">когнитивный токен</text>
+    <text x="445" y="138" fill="#7a8493" font-size="9.5" text-anchor="middle">энкодер @ поздние слои</text>
+
+    <path d="M510,126 L546,126" stroke="#8a93a6" stroke-width="2" marker-end="url(#arr)"/>
+
+    <rect x="550" y="100" width="150" height="52" rx="8" fill="#0e1622" stroke="#f0b86e"/>
+    <text x="625" y="122" fill="#f0b86e" font-size="11.5" font-weight="700" text-anchor="middle">ConfidenceProbe</text>
+    <text x="625" y="138" fill="#9aa3b2" font-size="9.5" text-anchor="middle">линейная, AUC 0.715</text>
+
+    <path d="M700,126 L736,126" stroke="#f0b86e" stroke-width="2" marker-end="url(#arro)"/>
+
+    <rect x="740" y="100" width="120" height="52" rx="8" fill="#0e1622" stroke="#3a4456"/>
+    <text x="800" y="124" fill="#cfd6e2" font-size="11.5" text-anchor="middle">вердикт</text>
+    <text x="800" y="140" fill="#7a8493" font-size="9.5" text-anchor="middle">не уверена?</text>
+  </g>
+
+  <!-- ===== ветвление ===== -->
+  <path d="M800,152 L800,196" stroke="#8a93a6" stroke-width="2" marker-end="url(#arr)"/>
+  <rect x="600" y="200" width="120" height="46" rx="8" fill="#13241a" stroke="#3f6b49"/>
+  <text x="660" y="220" fill="#7fcf8f" font-size="11" font-weight="700" text-anchor="middle">уверена</text>
+  <text x="660" y="236" fill="#9aa3b2" font-size="9.5" text-anchor="middle">→ ответить прямо</text>
+  <rect x="740" y="200" width="130" height="46" rx="8" fill="#241a16" stroke="#7a5440"/>
+  <text x="805" y="220" fill="#f0b86e" font-size="11" font-weight="700" text-anchor="middle">не уверена</text>
+  <text x="805" y="236" fill="#9aa3b2" font-size="9.5" text-anchor="middle">→ поиск / уточнить / эскалация</text>
+  <path d="M788,170 C720,182 700,190 686,200" stroke="#8a93a6" stroke-width="1.5" fill="none" marker-end="url(#arr)"/>
+
+  <!-- ===== генерация не тронута ===== -->
+  <rect x="40" y="196" width="520" height="64" rx="10" fill="none" stroke="#3f6b49" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="56" y="220" fill="#7fcf8f" font-size="12" font-weight="700">генерация не изменяется</text>
+  <text x="56" y="240" fill="#9aa3b2" font-size="10.5">сторож только ЧИТАЕТ (gain = 0) — off-task шум не копится на длинном выводе</text>
+
+  <!-- ===== почему: три формы ODEX ===== -->
+  <text x="40" y="312" fill="#cfd6e2" font-size="12.5" font-weight="700">Почему «только чтение» — три формы на агентной задаче (ODEX, база решает 7/15)</text>
+  <g font-size="11">
+    <rect x="40" y="328" width="270" height="60" rx="8" fill="#0e1622" stroke="#7a5440"/>
+    <text x="56" y="350" fill="#d9776c" font-size="11.5" font-weight="700">постоянная инъекция</text>
+    <text x="56" y="370" fill="#9aa3b2">−3 — портит длинную генерацию</text>
+
+    <rect x="320" y="328" width="270" height="60" rx="8" fill="#0e1622" stroke="#3f6b49"/>
+    <text x="336" y="350" fill="#7fcf8f" font-size="11.5" font-weight="700">Watchdog (read-only)</text>
+    <text x="336" y="370" fill="#9aa3b2">+1, ноль потерь</text>
+
+    <rect x="600" y="328" width="260" height="60" rx="8" fill="#0e1622" stroke="#3f6b49"/>
+    <text x="616" y="350" fill="#7fcf8f" font-size="11.5" font-weight="700">точечная инъекция</text>
+    <text x="616" y="370" fill="#9aa3b2">+1, ноль потерь (decide-then-detach)</text>
+  </g>
+
+  <!-- код -->
+  <rect x="40" y="408" width="820" height="92" rx="8" fill="#0b0e14" stroke="#262b37"/>
+  <text x="58" y="432" fill="#8a93a6" font-size="11" font-family="monospace">watch = Watchdog(ConfidenceProbe.load("probe.pt"))</text>
+  <text x="58" y="454" fill="#8a93a6" font-size="11" font-family="monospace">v = watch.score(pipe, prompt)</text>
+  <text x="58" y="476" fill="#8a93a6" font-size="11" font-family="monospace">if v.is_uncertain:  docs = retrieve(...)   # внешнее — генерация не тронута</text>
+</svg>

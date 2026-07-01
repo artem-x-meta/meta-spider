@@ -114,17 +114,20 @@
     <a href="#introduction">Introduction</a>
     <a href="#install">Installation</a>
     <a href="#quickstart">Quickstart</a>
-    <h4>Concepts</h4>
-    <a href="#how-it-works">How it works</a>
-    <a href="#architecture">Architecture</a>
-    <a href="#components">Components</a>
-    <a href="#configuration">Configuration</a>
+    <h4>How it works</h4>
+    <a href="#mechanism">Meta-attention mechanism</a>
+    <a href="#metrics">Honest metrics</a>
+    <h4>Capabilities</h4>
+    <a href="#vs-prompt">Meta-attention vs a text prompt</a>
+    <a href="#gain">The uncertainty knob</a>
+    <a href="#watchdog">The Watchdog</a>
+    <a href="#factory">The wrapper factory</a>
     <h4>Guides</h4>
-    <a href="#training">Training a Doubter</a>
-    <a href="#evaluation">Evaluation &amp; metrics</a>
+    <a href="#train">Train your own</a>
     <a href="#agent">Agentic runtime</a>
     <a href="#deploy">Deploy to llama.cpp</a>
     <h4>Reference</h4>
+    <a href="#architecture">Architecture</a>
     <a href="#api">API reference</a>
     <a href="#faq">FAQ</a>
   </div>
@@ -133,17 +136,20 @@
     <a href="#introduction-ru">Введение</a>
     <a href="#install-ru">Установка</a>
     <a href="#quickstart-ru">Быстрый старт</a>
-    <h4>Концепции</h4>
-    <a href="#how-it-works-ru">Как это работает</a>
-    <a href="#architecture-ru">Архитектура</a>
-    <a href="#components-ru">Компоненты</a>
-    <a href="#configuration-ru">Конфигурация</a>
+    <h4>Как это работает</h4>
+    <a href="#mechanism-ru">Механизм мета-внимания</a>
+    <a href="#metrics-ru">Честные метрики</a>
+    <h4>Возможности</h4>
+    <a href="#vs-prompt-ru">Мета-внимание vs текст-промт</a>
+    <a href="#gain-ru">Ручка неуверенности</a>
+    <a href="#watchdog-ru">Сторож</a>
+    <a href="#factory-ru">Фабрика обвязок</a>
     <h4>Руководства</h4>
-    <a href="#training-ru">Обучение Скептика</a>
-    <a href="#evaluation-ru">Оценка и метрики</a>
+    <a href="#train-ru">Обучить свою</a>
     <a href="#agent-ru">Агентный рантайм</a>
     <a href="#deploy-ru">Деплой в llama.cpp</a>
     <h4>Справочник</h4>
+    <a href="#architecture-ru">Архитектура</a>
     <a href="#api-ru">Справочник API</a>
     <a href="#faq-ru">ЧаВо</a>
   </div>
@@ -151,141 +157,150 @@
 
 <main>
   <div class="en">
+  <!-- ============================ GETTING STARTED ============================ -->
   <section id="introduction">
     <h1>meta-spider</h1>
-    <p class="lead">A toolkit for <b>architectural introspection</b> in language models:
-      give a frozen LLM a feedback channel into its own activations so it learns
-      <b>when to trust itself</b> — answer confidently or refuse honestly.</p>
-    <p>Instead of text-based reflection ("think again"), meta-spider reads the model's
-      hidden states, compresses them into <b>cognitive tokens</b>, and injects them back
-      through gated cross-attention. The base model stays <b>frozen</b>; only a thin
-      wrapper (~2% of params) is trained. The result is <b>selective prediction</b> —
-      the model abstains on questions it would get wrong.</p>
+    <p class="lead">A thin trainable wrapper that gives a <b>frozen</b> LLM a feedback channel into its
+      own activations, so it learns <b>when to trust itself</b> — answer confidently, or refuse / look
+      it up / ask, honestly.</p>
+    <p>Instead of text-based reflection ("think again"), meta-spider reads the model's hidden states
+      with a trainable encoder, compresses them into <b>cognitive tokens</b>, and injects them back
+      through gated cross-attention. The base weights never change — only a wrapper (~2% of params) is
+      trained. The result is <b>selective prediction</b>: the model abstains on questions it would get
+      wrong. And — the key finding — this latent channel is <b>not reachable by prompting</b>.</p>
     <img class="diagram" src="assets/overview-en.svg" alt="Meta-Spider at a glance: build the wrapper (factory), it reads and injects on a frozen base, control it (gain) or just read it (Watchdog), deploy anywhere">
     <div class="grid">
-      <div class="card"><h3>Frozen base</h3><p>The LLM weights never change. Gradients
-        flow <i>through</i> the frozen base to the wrapper; the base acts as a proxy loss.</p></div>
-      <div class="card"><h3>Two-pass inference</h3><p>Pass 1 reads activations → cognitive
-        tokens. Pass 2 generates with those tokens injected via cross-attention.</p></div>
-      <div class="card"><h3>Honest calibration</h3><p>Metrics scored against an oracle
-        ("would the base be wrong?"), not naive heuristics.</p></div>
-      <div class="card"><h3>Train once, deploy anywhere</h3><p>Train in PyTorch, export a
-        GGUF sidecar, run on CPU via llama.cpp — no GPU at inference.</p></div>
+      <div class="card"><h3>Frozen base</h3><p>The LLM weights never change. Gradients flow <i>through</i>
+        the frozen base to the wrapper; the base acts as a proxy loss.</p></div>
+      <div class="card"><h3>Latent, not text</h3><p>The uncertainty signal lives in the residual stream,
+        surfaced by a probe — a prompt can't reach it (see <a href="#vs-prompt">the comparison</a>).</p></div>
+      <div class="card"><h3>Honest calibration</h3><p>Metrics scored against an oracle ("would the base be
+        wrong?"), not naive heuristics.</p></div>
+      <div class="card"><h3>Train once, deploy anywhere</h3><p>Train in PyTorch, export a GGUF sidecar,
+        run on CPU via llama.cpp — no GPU at inference.</p></div>
     </div>
     <span class="pill">frozen base</span><span class="pill">cross-attention</span>
-    <span class="pill">selective prediction</span><span class="pill">QLoRA-style nf4</span>
+    <span class="pill">selective prediction</span><span class="pill">nf4 / QLoRA-style</span>
     <span class="pill">llama.cpp deploy</span>
-    <img class="diagram" src="assets/workflow-en.svg" alt="The whole pipeline: collect, train, eval, then agent or deploy">
   </section>
 
   <section id="install">
     <h2>Installation</h2>
-    <p>meta-spider needs Python 3.10+, PyTorch, and Transformers. Quantized bases
-      (<code>nf4</code>/<code>int8</code>) additionally require <code>bitsandbytes</code>.</p>
-    <p><b>Four packages</b>, each in its own folder under <code>meta-spider-framework/</code>:
-      <code>meta-core</code> (inference primitives — pure core, depends on nothing),
-      <code>meta-agent</code> (agentic runtime → Core), <code>meta-loom</code> (training + eval →
-      Core <b>+ Agent</b>), <code>meta-deploy</code> (llama.cpp deploy → Core). Production inference
-      installs only <code>meta-core</code>.</p>
-<pre><span class="c"># editable install from source</span>
-git clone &lt;repo&gt; &amp;&amp; cd meta-spider-framework
-pip install -e meta-core -e meta-agent -e meta-loom   <span class="c"># or just meta-core for inference</span>
-pip install -e meta-deploy                            <span class="c"># optional: export to llama.cpp (GGUF sidecar)</span>
+    <p>meta-spider is <b>four pip packages</b> under <code>meta-spider-framework/</code>. Production
+      inference needs only <code>meta-core</code>.</p>
+<pre><span class="c"># from the meta-spider-framework folder (editable install)</span>
+git clone https://codeberg.org/imperius/meta-spider &amp;&amp; cd meta-spider
+pip install -e meta-core -e meta-agent -e meta-loom   <span class="c"># or just meta-core to run a wrapper</span>
+pip install -e meta-deploy                            <span class="c"># optional: export to llama.cpp (GGUF)</span>
 
 <span class="c"># runtime deps</span>
-pip install transformers datasets accelerate
-pip install bitsandbytes  <span class="c"># optional: nf4/int8 quantized bases</span></pre>
-    <div class="note"><b>Note.</b> Gated bases (Llama, Gemma-it) need an accepted license
-      and <code>HF_TOKEN</code>. Apache-2.0 bases (e.g. Gemma&nbsp;4) load without a token.</div>
+pip install "transformers&gt;=5.11" datasets accelerate
+pip install bitsandbytes   <span class="c"># optional: nf4 / int8 quantized bases</span></pre>
+    <div class="warn"><b>torch ≥ 2.5.</b> Recent <code>transformers</code> uses <code>nn.Module.set_submodule</code>
+      (added in torch 2.5). Gated bases (Llama, Gemma-it) need an accepted license + <code>HF_TOKEN</code>.</div>
   </section>
 
   <section id="quickstart">
     <h2>Quickstart</h2>
-    <p>Load a frozen base, attach a trained <code>Doubter</code>, and generate. The pipeline
-      handles the two-pass mechanism automatically.</p>
+    <p>Load a frozen base, attach a trained <code>Doubter</code>, generate. The two-pass mechanism is
+      handled for you.</p>
 <pre><span class="k">from</span> meta_core <span class="k">import</span> MetaSpiderConfig, MetaSpiderPipeline, Doubter
 
 cfg = MetaSpiderConfig(
-    model_name=<span class="s">"google/gemma-2-2b-it"</span>,
-    device=<span class="s">"cuda"</span>, dtype=<span class="s">"float16"</span>,
-    quantization=<span class="s">"nf4"</span>,                <span class="c"># 4-bit frozen base (fits small GPUs)</span>
-    target_layers=[<span class="n">10</span>,<span class="n">14</span>,<span class="n">18</span>,<span class="n">22</span>,<span class="n">25</span>],   <span class="c"># where activations are read</span>
-    cross_attn_layers=[<span class="n">6</span>,<span class="n">12</span>,<span class="n">18</span>,<span class="n">24</span>],   <span class="c"># where cognitive tokens are injected</span>
+    model_name=<span class="s">"Qwen/Qwen2.5-14B-Instruct"</span>,
+    device=<span class="s">"cuda"</span>, dtype=<span class="s">"bfloat16"</span>, quantization=<span class="s">"nf4"</span>,
+    target_layers=<span class="s">"late"</span>, cross_attn_layers=<span class="s">"late"</span>,   <span class="c"># or explicit [32,…,47]</span>
 )
 pipe = MetaSpiderPipeline.from_pretrained(cfg)
 pipe.attach(Doubter.from_checkpoint(<span class="s">"doubter.pt"</span>))
 
 print(pipe.generate(<span class="s">"What is the capital of France?"</span>))
 <span class="c"># → "The capital of France is Paris."</span>
-print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Farthings'?"</span>))
+print(pipe.generate(<span class="s">"&lt;an unanswerable / false-premise question&gt;"</span>))
 <span class="c"># → "I'm not confident enough to answer this question accurately."</span></pre>
-    <p>Dimensions (<code>hidden_dim</code>, <code>num_layers</code>) are auto-detected from the
-      base. Layer selection accepts explicit lists or presets <code>"all"</code> / <code>"late"</code>.</p>
-    <div class="note"><b>Want to train your own?</b> The <code>metaloom</code> CLI is the fast path —
-      <code>collect → train → eval</code> in three commands. See <a href="#training">Training</a>.</div>
+    <p>Dimensions are auto-detected from the base; <code>target_layers</code> accepts explicit lists or
+      the presets <code>"all"</code> / <code>"late"</code>. Ready-made wrappers:
+      <a href="https://huggingface.co/Imperius/meta-qwen-14b-universal">meta-qwen-14b-universal</a>.</p>
   </section>
 
-  <section id="how-it-works">
-    <h2>How it works</h2>
-    <img class="diagram" src="assets/two-pass-en.svg" alt="Two-pass injection: Pass 1 reads activations, Pass 2 injects cognitive tokens">
+  <!-- ============================ HOW IT WORKS ============================ -->
+  <section id="mechanism">
+    <h2>The meta-attention mechanism</h2>
+    <p>The idea: a trainable encoder extracts an uncertainty signal from the language model and feeds it
+      back, surgically, through meta-attention heads and gates that sit on the selected layers.</p>
+    <h3>Main components</h3>
+    <ul>
+      <li><b>Activation hooks</b> — capture the base's hidden states.</li>
+      <li><b>Cognitive encoder</b> — compresses the activations into <b>cognitive tokens</b> (one per layer).</li>
+      <li><b>Gates</b> — a scalar (tanh) multiplier deciding how much introspection each layer needs.</li>
+      <li><b>Meta-attention heads</b> — one per layer; cross-attention that mixes each cognitive token
+        into its own layer. This is where the injection actually happens.</li>
+    </ul>
+    <img class="diagram" src="assets/components-en.svg" alt="Components: activation hooks, cognitive encoder, gates, meta-attention heads">
+
+    <h3>Two-pass injection</h3>
     <p>One run = <b>two forward passes of the same frozen model</b>.</p>
-<pre><span class="c">Pass 1 (read):  text → frozen LLM → hooks capture last-token hidden states</span>
+<pre><span class="c">Pass 1 (read):  prompt → frozen base → hooks capture the last-token hidden states</span>
 <span class="c">                → cognitive encoder → cognitive tokens (one per layer) → buffer</span>
-<span class="c">Pass 2 (write): text + injected cognitive tokens via gated cross-attention</span>
-<span class="c">                → frozen LLM generates the answer (or an honest refusal)</span></pre>
-    <p>During training a backward pass is added: the loss is ordinary language-modeling
-      cross-entropy on the target, and gradients flow back through the frozen base to the
-      encoder and cross-attention. The base is a passive transmitter — its weights are not
-      updated, but the computational graph through it exists. In effect <b>the base model
-      itself is the loss function for the wrapper</b>.</p>
-    <div class="note"><b>Why frozen?</b> Any unfreezing (LoRA, partial) lets the model take a
-      shortcut through its own weights and refusal calibration collapses. Keeping the base
-      frozen forces the signal through the introspection channel.</div>
+<span class="c">Pass 2 (write): prompt + injected cognitive tokens via gated cross-attention</span>
+<span class="c">                → frozen base generates the answer (or an honest refusal)</span></pre>
+    <img class="diagram" src="assets/two-pass-en.svg" alt="Two-pass injection: Pass 1 reads activations, Pass 2 injects cognitive tokens">
 
-    <h3>Long generation: AGC</h3>
+    <h3>Training the wrapper</h3>
+    <p>Training adds a backward pass on top of the two passes. The gradient flows <i>through</i> the frozen
+      base to the wrapper — the base's weights don't change, but the graph through it exists, so the base
+      LLM itself acts as the loss function. The collector runs questions through the base, captures
+      activations and marks each answer right/wrong (the <b>oracle</b>); the wrapper then learns to inject
+      so the model refuses exactly the questions it would have gotten wrong.</p>
+    <img class="diagram" src="assets/training-en.svg" alt="Training: collector + oracle, then forward/backward through the frozen base">
+    <div class="note"><b>Where the signal lives.</b> A linear-probe sweep across layers/slots shows
+      uncertainty is linearly decodable mainly in the <b>late third</b> — which is why
+      <code>target_layers="late"</code> reads there, not the whole stack.</div>
+
+    <h3>Automatic Gain Control (AGC)</h3>
+    <p>Over a long generation the injected signal <b>self-amplifies</b> (positive feedback — each splash
+      fills the "water tank") and the model spirals into refusing everything. <b>AGC</b> (a term from
+      analog electronics) damps it: a decay pulls the injection strength back toward a floor, holding it
+      at a setpoint instead of letting the loop run away. It composes with the trained gates and with the
+      <a href="#gain">gain knob</a>.</p>
     <img class="diagram" src="assets/agc-en.svg" alt="AGC: the uncertainty signal self-amplifies; a gain control holds it at a setpoint">
-    <p>Over long generations the injected uncertainty <b>self-amplifies</b> — the live residual attends
-      more strongly to the cognitive tokens as drift grows — and the model can spiral into a refusal
-      loop. <b>AGC</b> (Automatic Gain Control, a term borrowed from electronics) damps it: a coefficient
-      <code>α = floor + (1−floor)·e^(−step/τ)</code> starts at full and decays to a <code>floor</code>,
-      topping up against the "drain" so doubt holds at a steady setpoint instead of running away. It is
-      opt-in — the validated short-generation regime is untouched.</p>
+    <div class="note"><b>Two passes for the price of ~one.</b> Pass-1 snapshots are cached at collect
+      (base is frozen → constant); the un-injected bottom of Pass-2 is cached (<code>cut_hidden</code>);
+      at inference cognitive tokens + the base KV-cache are reused. See the caching diagram in
+      <a href="#train">Train your own</a>.</p></div>
+  </section>
 
-    <h3>The dial: a gain knob <small>(v0.2)</small></h3>
-    <p>That same injection coefficient becomes a <b>continuous control knob</b> when you set it by hand
-      instead of letting it decay. <code>gain=1.0</code> is the trained baseline; <code>&gt;1</code>
-      amplifies the doubt (more refusals), <code>&lt;1</code> attenuates it, and <code>&lt;0</code>
-      inverts it — pushing the model toward confidence. It composes with the trained gates and with AGC.</p>
-<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter
-doubter = Doubter.from_checkpoint(<span class="s">"doubter.pt"</span>); pipe.attach(doubter)
-doubter.set_gain(<span class="n">1.5</span>)   <span class="c"># more cautious — more refusals</span>
-doubter.set_gain(<span class="n">-0.5</span>)  <span class="c"># more confident — invert the injection</span>
-pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># the mixing console: dial every attached modifier</span></pre>
-    <p>Unlike a LoRA — a static weight delta that entangles the behaviour into the weights — this is an
-      <b>isolated channel</b> you fade at inference, and several modifiers can sum on the same residual
-      stream, each with its own gain: a mixing console for behaviour.</p>
-    <div class="note"><b>Range.</b> Validated monotonic on a 12B instruct model: <code>gain</code> 0 → 1.5
-      dials refusal smoothly; past ~1.5–2.0 the positive-feedback injection runs away — combine the static
-      gain with AGC near the ceiling. It is a <b>coverage</b> knob, not free calibration: it controls how
-      much the model abstains, not how smart the abstentions are.</div>
-    <img class="diagram" src="assets/gain-en.svg" alt="The gain knob: a runtime dial mapping gain to refusal rate; AGC prevents runaway">
+  <section id="metrics">
+    <h2>Honest metrics (base vs Doubter, done right)</h2>
+    <p>The Doubter turns "always answer" into "answer or refuse", so plain accuracy is misleading — a
+      refusal isn't a wrong answer. You need <b>selective prediction</b> metrics: not "how often right
+      overall", but "right on what it <i>chose</i> to answer, and are its refusals justified".</p>
+    <p>The trick is the <b>oracle</b>: ahead of time, run the clean base and record whether it would have
+      answered correctly (<code>pass1_correct</code>). Every question then lands in one of four boxes:</p>
+    <table>
+      <tr><th></th><th>model answered</th><th>model refused</th></tr>
+      <tr><td><b>base would be right</b></td><td>✅ correct answer</td><td>⚠️ over-refusal (silent for nothing)</td></tr>
+      <tr><td><b>base would be wrong</b></td><td>❌ confident error</td><td>✅ justified refusal</td></tr>
+    </table>
+    <p>The headline metrics (numbers: a real Gemma-4-12B run):</p>
+    <ul>
+      <li><b>selective accuracy</b> — of what it answered, the share correct (the value-add). Gemma-hard
+        <b>53.2 → 72.0%</b> (p=0.001).</li>
+      <li><b>refusal precision</b> vs the oracle — how well-targeted the refusals are.</li>
+      <li><b>over-refusal rate</b> — the cost of caution.</li>
+    </ul>
+    <img class="diagram" src="assets/metrics-en.svg" alt="Where the metrics come from: the 2x2 of outcomes">
+    <div class="warn"><b>Over-refusal is a known cost, not a failure.</b> The criterion of value is whether
+      selective accuracy moves — not the refusal rate.</div>
+  </section>
 
-    <h3>The Watchdog: a read-only uncertainty sensor</h3>
-    <p>The same signal can be used <b>without</b> injecting anything. The <code>Watchdog</code> reads the
-      cognitive token through a linear <code>ConfidenceProbe</code> and returns a verdict (confident /
-      uncertain), so you gate an <b>external</b> action — retrieve, clarify, escalate — while
-      <b>generation stays untouched</b>. That avoids the off-task drift constant injection causes over long
-      outputs (a key finding: injection is a modulator of the <i>decision</i>, not of generation).</p>
-<pre><span class="k">from</span> meta_core <span class="k">import</span> Watchdog, ConfidenceProbe
-watch = Watchdog(ConfidenceProbe.load(<span class="s">"probe.pt"</span>))
-<span class="k">if</span> watch.score(pipe, prompt).is_uncertain:
-    docs = retrieve(...)   <span class="c"># external action — generation is never modified</span></pre>
-    <img class="diagram" src="assets/watchdog-en.svg" alt="Watchdog: reads the cognitive token via a probe and gates an external action without touching generation">
-
-    <h3>Why not just prompt the model to be unsure?</h3>
-    <p>Because the latent channel is not reachable by prompting. In a fair 2×2 (both arms allowed to say
-      "unsure") on <b>Qwen2.5-14B</b>, a text prompt that simply <i>asks</i> the model to be cautious is
-      nearly <b>inert</b>, while the wrapper moves the decision decisively:</p>
+  <!-- ============================ CAPABILITIES ============================ -->
+  <section id="vs-prompt">
+    <h2>Meta-attention vs a text prompt</h2>
+    <p>The obvious alternative to a trained wrapper is to just <i>ask</i> the model to be careful in a
+      system prompt. It doesn't work — <b>the latent channel is not reachable by prompting</b>. In a fair
+      2×2 on <b>Qwen2.5-14B</b> (both arms allowed to say "unsure"), a text prompt is nearly <b>inert</b>
+      on the axes where uncertainty matters, while the wrapper moves the decision decisively.</p>
     <div class="grid">
       <div class="card"><h3>Abstain when there's no tool</h3><p>base 0.27 → text prompt 0.33 →
         <b>wrapper 0.67</b>.</p></div>
@@ -293,449 +308,330 @@ watch = Watchdog(ConfidenceProbe.load(<span class="s">"probe.pt"</span>))
         → <b>wrapper 0.87</b>.</p></div>
       <div class="card"><h3>Catch the base's errors (MMLU-Pro)</h3><p>the wrapper flags <b>78%</b> of the
         questions the base gets wrong; the text prompt, 14%.</p></div>
+      <div class="card"><h3>Selective accuracy (MMLU-Pro)</h3><p>wrapper <b>0.585 → 0.622</b>; the text
+        prompt moves neither refusal (0.097 → 0.097) nor accuracy.</p></div>
     </div>
-    <div class="note"><b>Read it right.</b> Measure the signal through the channel the wrapper was trained
-      to express — it <i>generates</i> a refusal ("I'm not confident enough to answer"), so detect refusal
-      in the generation, not via an artificial "UNSURE" multiple-choice option (that readout makes it look
-      inert). <span class="c">docs/results/qwen-14b/text-vs-latent.md</span></div>
+    <div class="note"><b>Read the signal through the right channel.</b> The wrapper was trained to
+      <i>generate</i> a refusal ("I'm not confident enough to answer"), so detect refusal in the
+      generation — not via an artificial "UNSURE" multiple-choice option (that readout makes the wrapper
+      look inert). Save the raw generations so a readout mismatch is caught by eye and re-graded offline.
+      <span class="c">docs/results/qwen-14b/text-vs-latent.md</span></div>
   </section>
 
-  <section id="architecture">
-    <h2>Architecture: four packages</h2>
-    <img class="diagram" src="assets/packages-en.svg" alt="Four packages: meta-core shared by meta-loom, meta-agent, meta-deploy">
-    <p>The framework is <b>four pip packages</b> under <code>meta-spider-framework/</code>, each
-      with a single job and a clean dependency graph — you install only what you need.</p>
-    <table>
-      <tr><th>Package</th><th>What it does</th><th>Key classes</th></tr>
-      <tr>
-        <td><code>meta-core</code><br><span class="c">core</span></td>
-        <td><b>Inference primitives</b> — the two-pass mechanism: frozen base + thin wrapper, hooks,
-          cognitive encoder, gated cross-attention, the checkpoint contract. No training, no benchmarks.
-          Pure core — <b>depends on nothing</b>; production inference installs only this.</td>
-        <td><code>MetaSpiderPipeline</code>, <code>Doubter</code>, <code>ActivationCollector</code>,
-          <code>BottleneckCrossAttention</code>, encoders, <code>IntrospectionCache</code></td>
-      </tr>
-      <tr>
-        <td><code>meta-loom</code><br><span class="c">train + eval</span></td>
-        <td><b>Training &amp; evaluation toolkit.</b> Trains the wrapper on your data (two-pass backprop
-          through the frozen base) and measures value-add honestly. Depends on <b>Core + Agent</b>.</td>
-        <td><code>Trainer</code>, <code>ActivationDatasetCollector</code>,
-          <code>BaselineComparison</code> (QA), <code>AgentComparison</code> (agentic),
-          <code>EvalHarness</code>, <code>OpenRouterJudge</code>; the <code>metaloom</code> CLI
-          (<code>collect</code>/<code>train</code>/<code>eval</code>)</td>
-      </tr>
-      <tr>
-        <td><code>meta-agent</code><br><span class="c">agentic runtime</span></td>
-        <td><b>Agentic runtime + chat</b> for the two-pass wrapper. Standard agent loop (tools, history)
-          plus the one seam — <code>ActionRenderer</code> — that turns the latent decision into an
-          action. Native tool-calling for instruct models. Depends on <b>Core</b>.</td>
-        <td><code>MetaAgent</code>, <code>Session</code>, <code>ToolRegistry</code>,
-          <code>NativeToolPrompt</code>/<code>NativeToolRenderer</code>, <code>StopBackend</code>,
-          <code>ChatLoop</code></td>
-      </tr>
-      <tr>
-        <td><code>meta-deploy</code><br><span class="c">llama.cpp deploy</span></td>
-        <td><b>Train in PyTorch, deploy in llama.cpp.</b> Exports the trained wrapper to a GGUF sidecar
-          + ggml/C++ forward (encoder + cross-attention) so calibrated refusal runs on a quantized base
-          with no CUDA/PyTorch — CPU, Metal, edge. Encoder &amp; CA verified vs PyTorch (diff ~1e-7);
-          end-to-end validated on Qwen2.5-0.5B. Depends on <b>Core</b>.</td>
-        <td><code>export_sidecar</code>/<code>export_from_run_dir</code>, the <code>metadeploy</code> CLI,
-          ggml <code>meta_selective</code>/<code>meta_ca</code>, llama.cpp <code>llama-meta-generate</code></td>
-      </tr>
-    </table>
-<pre><span class="c">dependency graph (arrow = "depends on"):</span>
-meta-core   →  (nothing)              <span class="c"># pure core; prod inference = only this</span>
-meta-agent  →  meta-core
-meta-loom   →  meta-core + meta-agent  <span class="c"># Loom uses Agent for agentic eval</span>
-meta-deploy →  meta-core               <span class="c"># export wrapper → llama.cpp (GGUF sidecar)</span></pre>
-    <p>Detailed below: <b>Core</b> in <a href="#components">Core components</a> /
-      <a href="#configuration">Configuration</a>; <b>Loom</b> in <a href="#training">Training</a> /
-      <a href="#evaluation">Evaluation</a>; <b>Agent</b> in the agentic part of
-      <a href="#evaluation">Evaluation</a>; <b>Deploy</b> — see the <code>meta-deploy</code> README
-      (<code>metadeploy export</code> + llama.cpp patch). An optional umbrella shim
-      <code>meta_spider</code> re-exports Core+Loom names for back-compat.</p>
+  <section id="gain">
+    <h2>The uncertainty knob (gain)</h2>
+    <p>The injection coefficient becomes a <b>continuous control knob</b> when you set it by hand instead
+      of letting AGC decay it. <code>gain=1.0</code> is the trained baseline; <code>&gt;1</code> amplifies
+      the doubt (more refusals), <code>&lt;1</code> attenuates, <code>&lt;0</code> inverts it toward
+      confidence.</p>
+<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter
+doubter = Doubter.from_checkpoint(<span class="s">"doubter.pt"</span>); pipe.attach(doubter)
+doubter.set_gain(<span class="n">1.5</span>)   <span class="c"># more cautious — more refusals</span>
+doubter.set_gain(<span class="n">-0.5</span>)  <span class="c"># more confident — invert the injection</span>
+pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># the mixing console: dial every attached modifier</span></pre>
+    <img class="diagram" src="assets/gain-en.svg" alt="The gain knob: a runtime dial mapping gain to refusal rate; AGC prevents runaway">
+    <div class="note"><b>Range.</b> Validated monotonic on a 12B instruct model: <code>gain</code> 0 → 1.5
+      dials refusal smoothly (~2% → ~51%); past ~1.5–2.0 the positive-feedback injection runs away —
+      combine the static gain with AGC near the ceiling. It is a <b>coverage</b> knob, not free
+      calibration. One isolated channel, one runtime dial; several modifiers can sum on the same residual,
+      each with its own gain — a mixing console for behaviour.</div>
   </section>
 
-  <section id="components">
-    <h2>Core components</h2>
-    <img class="diagram" src="assets/components-en.svg" alt="Components: activation hooks, cognitive encoder, gates, meta-attention heads">
-    <table>
-      <tr><th>Component</th><th>Role</th></tr>
-      <tr><td><code>ActivationCollector</code></td><td>Forward hooks on target layers; capture
-        the last-token hidden state. Family-agnostic layer discovery (Llama/Gemma/Qwen/GPT,
-        nested multimodal).</td></tr>
-      <tr><td><code>Cognitive&nbsp;encoder</code></td><td>Compresses activations into cognitive tokens. Three
-        variants: <code>selective</code> (1 token/layer, calibration record),
-        <code>multi_token</code> (learned queries), <code>transformer</code> (unlocks
-        self-correction).</td></tr>
-      <tr><td><code>BottleneckCrossAttention</code></td><td>Injects cognitive tokens into the
-        residual stream. K/V come from cognitive tokens, Q from the hidden state.
-        Bottleneck 4096→256→4096.</td></tr>
-      <tr><td><code>Gates</code></td><td>Learnable <code>tanh(gate)</code> scalars — how much meta-signal
-        each layer mixes in. Two sets: encoder gates and injection gates.</td></tr>
-      <tr><td><code>ReflexionBuffer</code></td><td>Holds cognitive tokens between Pass 1 and
-        Pass 2.</td></tr>
-      <tr><td><code>Doubter</code></td><td>The modifier tying it together: encoder + cross-attention
-        + buffer + hooks. Attach to a pipeline with <code>pipe.attach(doubter)</code>.</td></tr>
-    </table>
+  <section id="watchdog">
+    <h2>The Watchdog — a read-only sensor</h2>
+    <p>The same signal can be used <b>without</b> injecting anything. The <code>Watchdog</code> reads the
+      cognitive token through a linear <code>ConfidenceProbe</code> and returns a verdict, so you gate an
+      <b>external</b> action — retrieve, clarify, escalate — while <b>generation stays untouched</b>.</p>
+<pre><span class="k">from</span> meta_core <span class="k">import</span> Watchdog, ConfidenceProbe
+watch = Watchdog(ConfidenceProbe.load(<span class="s">"probe.pt"</span>))
+<span class="k">if</span> watch.score(pipe, prompt).is_uncertain:
+    docs = retrieve(...)   <span class="c"># external action — generation is never modified</span></pre>
+    <img class="diagram" src="assets/watchdog-en.svg" alt="Watchdog: reads the cognitive token via a probe and gates an external action without touching generation">
+    <div class="note"><b>Why read-only?</b> Injection is a modulator of the <i>decision</i>, not of
+      generation — held on over a long output it accumulates off-task drift. On an agentic task (ODEX,
+      base solves 7/15): constant injection <b>−3</b>; the Watchdog and point-injection (inject only in
+      the decision window) both <b>+1 with zero losses</b>. The probe on the cognitive token beats a probe
+      on the raw activation (AUC 0.715 vs 0.63) — the encoder adds value.</div>
   </section>
 
-  <section id="configuration">
-    <h2>Configuration</h2>
-    <h3>MetaSpiderConfig</h3>
-    <table>
-      <tr><th>Field</th><th>Meaning</th></tr>
-      <tr><td><code>model_name</code></td><td>HF id of the base model.</td></tr>
-      <tr><td><code>dtype</code></td><td><code>"bfloat16"</code> (Ampere+) or <code>"float16"</code> (T4/P100).</td></tr>
-      <tr><td><code>quantization</code></td><td><code>None</code>, <code>"int8"</code>, <code>"nf4"</code>, <code>"fp4"</code> — frozen base compression.</td></tr>
-      <tr><td><code>target_layers</code></td><td>Layers to read. List, or <code>"all"</code> / <code>"late"</code> (upper third).</td></tr>
-      <tr><td><code>cross_attn_layers</code></td><td>Layers to inject into. Defaults to <code>target_layers</code>.</td></tr>
-      <tr><td><code>gradient_checkpointing</code></td><td>Trade compute for memory — needed for large bases.</td></tr>
-    </table>
-    <h3>DoubterConfig</h3>
-    <table>
-      <tr><th>Field</th><th>Meaning</th></tr>
-      <tr><td><code>encoder_type</code></td><td><code>"selective"</code> / <code>"multi_token"</code> / <code>"transformer"</code>.</td></tr>
-      <tr><td><code>num_cognitive_tokens</code></td><td>How many cognitive tokens to produce.</td></tr>
-      <tr><td><code>ca_bottleneck_dim</code>, <code>ca_num_heads</code></td><td>Cross-attention shape.</td></tr>
-      <tr><td><code>ca_gate_init</code></td><td>Gate init — keep at <b>0.3</b> (linear zone of tanh; 2.0 freezes gates).</td></tr>
-      <tr><td><code>enable_self_correction</code></td><td>Phase-2 confirm/correct/refuse targets.</td></tr>
-    </table>
-    <h3>TrainerConfig</h3>
-    <table>
-      <tr><th>Field</th><th>Meaning</th></tr>
-      <tr><td><code>epochs</code></td><td>Max epochs — converges in ~2; early-stop guards the rest.</td></tr>
-      <tr><td><code>learning_rate</code></td><td>Base LR (2e-4); gates &amp; token-preferences get <code>gate_lr_multiplier×</code> (5).</td></tr>
-      <tr><td><code>batch_size</code>, <code>grad_accumulation</code></td><td>Effective batch = the product; small bs + accumulation fits tiny GPUs.</td></tr>
-      <tr><td><code>pretrain_projectors</code></td><td>Pretrain per-layer probes (~1&nbsp;min CPU) — required for deep encoders.</td></tr>
-      <tr><td><code>optimizer</code></td><td><code>"adamw"</code> or <code>"adam8bit"</code> (4× less optimizer memory — 8–12B on 4&nbsp;GB).</td></tr>
-      <tr><td><code>early_stop_patience</code></td><td>Stop after N epochs without validation improvement.</td></tr>
-    </table>
-  </section>
-
-  <section id="training">
-    <h2>Training a Doubter</h2>
-    <img class="diagram" src="assets/training-en.svg" alt="Training: collector + oracle, then forward/backward through the frozen base">
-    <img class="diagram" src="assets/caching-en.svg" alt="Time saved by caching: collect-once, slice, inference KV-cache">
-    <p>Training is two stages: collect activations once (they are cached), then train the
-      wrapper. Run it two ways — the <b>CLI</b> (recommended) or the Python API.</p>
-
-    <h3>CLI — three stages, one manifest</h3>
-    <p>The <code>metaloom</code> CLI splits the pipeline into <code>collect → train → eval</code>,
-      linked by a <code>run.json</code> manifest (model · layers · dataset). <code>collect</code>
-      writes it; <code>train</code>, <code>eval</code>, <code>meta-agent</code> and
-      <code>metadeploy</code> read it via <code>--run-dir</code> — so you never retype the flags.</p>
-<pre>metaloom collect --run-dir runs/my --model-name Qwen/Qwen2.5-0.5B-Instruct \
-                 --dataset mmlu --target-layers late --encoder-type selective --mcq-direct
-metaloom train   --run-dir runs/my --epochs 6
-metaloom eval    --run-dir runs/my</pre>
-    <div class="warn"><b>Thinking models → <code>--mcq-direct</code>.</b> Qwen / Gemma-it / Granite
-      open a <code>&lt;think&gt;</code> block and never reach the answer on the short Pass&nbsp;1, so the
-      oracle flag stays 0 and the Doubter collapses into permanent refusal. <code>--mcq-direct</code>
-      disables thinking and asks for the letter only.</div>
-
-    <h3>Python API</h3>
-<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter, DoubterConfig
-<span class="k">from</span> meta_loom <span class="k">import</span> ActivationDatasetCollector, Trainer, TrainerConfig
-
-<span class="c"># 1. Collect activations (Pass-1 forward + pass1_correct oracle flag)</span>
-collector = ActivationDatasetCollector(pipe, max_new_tokens=<span class="n">50</span>,
-                                       check_correctness=check_fn)
-samples = collector.collect(questions, ground_truths)
-ActivationDatasetCollector.save(samples, <span class="s">"dataset.pt"</span>)
-
-<span class="c"># 2. Train the wrapper (base stays frozen)</span>
-doubter = Doubter(DoubterConfig(encoder_type=<span class="s">"selective"</span>))
-pipe.attach(doubter)
-trainer = Trainer(doubter, pipe, TrainerConfig(
-    epochs=<span class="n">10</span>, batch_size=<span class="n">2</span>, grad_accumulation=<span class="n">16</span>,
-    learning_rate=<span class="n">2e-4</span>, gate_lr_multiplier=<span class="n">5.0</span>,
-    pretrain_projectors=<span class="k">True</span>,   <span class="c"># required for the selective encoder</span>
-))
-trainer.train(train_samples, val_samples=val_samples)
-doubter.save_checkpoint(<span class="s">"doubter.pt"</span>)</pre>
-    <div class="note"><b>Optimizer.</b> Five parameter groups — encoder &amp; CA weights at the
-      base LR, gates &amp; token-preferences at <code>×5</code> (few params, tanh compresses
-      gradients). Cosine schedule, 5% warmup. Converges in ~2 epochs.</div>
-    <div class="warn"><b>Probe pretraining.</b> Deep (per-layer) encoders need it: each
-      projector is pretrained ~1&nbsp;min on CPU to predict <code>P(correct)</code>. Without it
-      the network does not converge.</div>
-
-    <h3>One command: a universal Doubter <small>(v0.3)</small></h3>
-    <p><code>metaloom build-universal</code> codifies the recipe for a <b>general</b> Doubter — one
-      wrapper trained on a <b>balanced diverse mix</b> (commit + hold across the whole agentic decision
-      space) rather than one narrow task. On a 6-axis held-out suite it was the only arm with <b>no axis
-      collapse</b> (worst-axis floor 0.47, commit preserved): a calibrated router that answers from
-      memory, calls a tool, asks to clarify, or declines.</p>
+  <section id="factory">
+    <h2>The wrapper factory (build-universal)</h2>
+    <p>A wrapper over-fit to one task transfers caution but <b>over-abstains</b> — it drops the axes where
+      you should <i>act</i>. The fix: train on a <b>balanced diverse mix</b> (commit + hold across the
+      whole agentic decision space). This recipe is codified as one command — a factory for a
+      <b>general</b> uncertainty wrapper over any base model.</p>
 <pre>metaloom build-universal --run-dir runs/uni --model-name Qwen/Qwen2.5-14B-Instruct \
                  --quantization nf4 --per-class 70 --epochs 6 \
                  --suite suite.json --eval --export-gguf</pre>
-    <p>It assembles the mix (When2Call · PopQA · SQuAD2, model-agnostic via the tokenizer;
-      <code>--suite</code> excludes its questions = leakage guard), runs <code>collect → train</code>
-      with explicit multi-action targets, then optionally a <b>per-axis</b> eval (<code>--eval</code> →
-      <code>floor</code> / <code>commit_mean</code>) and a GGUF sidecar (<code>--export-gguf</code>).
-      Output: a publishable <code>run.json</code> + checkpoint — a "factory" for uncertainty wrappers
-      over any base.</p>
     <img class="diagram" src="assets/factory-en.svg" alt="The factory: one command builds a general Doubter — diverse mix, collect, train, eval, export; the only arm with no axis collapse">
+    <p>It assembles the mix (When2Call · PopQA · SQuAD2, model-agnostic via the tokenizer;
+      <code>--suite</code> excludes its questions = leakage guard), runs <code>collect → train</code> with
+      explicit multi-action targets, then optionally a <b>per-axis</b> eval (<code>--eval</code> →
+      <code>floor</code> / <code>commit_mean</code>) and a GGUF sidecar (<code>--export-gguf</code>).</p>
+    <div class="note"><b>Result (Qwen2.5-14B, 6-axis held-out suite):</b> the diverse wrapper was the
+      <b>only arm with no axis collapse</b> — worst-axis floor 0.47 (vs base 0.13), it even raised the
+      tool-call axis above every other arm, keeping memory near base. A published example:
+      <a href="https://huggingface.co/Imperius/meta-qwen-14b-universal">meta-qwen-14b-universal</a>.</div>
   </section>
 
-  <section id="evaluation">
-    <h2>Evaluation &amp; metrics</h2>
-    <img class="diagram" src="assets/metrics-en.svg" alt="Where the metrics come from: the 2x2 of outcomes">
-    <p><code>BaselineComparison</code> runs base vs. modified on the same benchmark and reports
-      <b>honest</b> calibration metrics with statistical tests (McNemar, paired-t).</p>
-<pre><span class="k">from</span> meta_loom <span class="k">import</span> BaselineComparison, QABenchmark, BenchmarkTask
+  <!-- ============================ GUIDES ============================ -->
+  <section id="train">
+    <h2>Train your own — collect → train → eval</h2>
+    <p>The whole cycle is three <code>metaloom</code> CLI stages linked by one <code>run.json</code>
+      manifest (model · layers · dataset). <code>collect</code> writes it; the rest read it via
+      <code>--run-dir</code>, so you never retype the flags.</p>
+<pre><span class="c"># 1 · collect — run the base, capture activations + the oracle flag</span>
+metaloom collect --run-dir runs/my --model-name Qwen/Qwen2.5-0.5B-Instruct \
+                 --dataset mmlu --target-layers late --encoder-type selective --mcq-direct
 
-bench = QABenchmark(name=<span class="s">"test"</span>, tasks=tasks, scoring=<span class="s">"custom"</span>)
-report = BaselineComparison(pipe, bench, max_tokens=<span class="n">80</span>).run()
-print(report.summary())</pre>
-    <p>For <b>agentic</b> evaluation (multi-step tool use), <code>AgentComparison</code> runs the
-      honest base-vs-Doubter loop through <b>Meta-Agent</b> (native tool-calling format, not hand-rolled
-      ReAct) and reports pass-rate plus rescued/broke counts.</p>
-    <table>
-      <tr><th>Metric</th><th>Definition</th></tr>
-      <tr><td>Selective accuracy</td><td>Of questions the model <i>answered</i>, fraction correct.</td></tr>
-      <tr><td>Refusal rate</td><td>Fraction of questions refused.</td></tr>
-      <tr><td>Refusal precision</td><td>Of refusals, fraction <i>justified</i> — the base would
-        have been wrong. <b>Scored against an oracle</b> (pass1_correct), not a naive
-        text match.</td></tr>
-      <tr><td>Over-refusal rate</td><td>Of refusals, fraction the model actually knew (cost of caution).</td></tr>
-    </table>
-    <div class="warn"><b>Honesty caveat.</b> Refusal precision is only meaningful against the
-      base oracle. A naive "refusal text ≠ answer" check is ~always true and inflates the
-      number — avoid it.</div>
+<span class="c"># 2 · train — only the wrapper; base frozen, Pass-1 not recomputed</span>
+metaloom train --run-dir runs/my --epochs 6
+
+<span class="c"># 3 · eval — base vs Doubter on the held-out split (selective metrics)</span>
+metaloom eval --run-dir runs/my
+
+<span class="c"># 4 · talk — run.json carries model+layers+checkpoint</span>
+meta-agent run --run-dir runs/my "What is the capital of France?"</pre>
+    <img class="diagram" src="assets/workflow-en.svg" alt="The whole pipeline: collect, train, eval, then agent or deploy">
+    <div class="warn"><b>Thinking models → <code>--mcq-direct</code>.</b> Qwen / Gemma-it / Granite open a
+      <code>&lt;think&gt;</code> block and never reach the answer on the short Pass&nbsp;1, so the oracle
+      flag stays 0 and the Doubter collapses into permanent refusal. <code>--mcq-direct</code> disables
+      thinking and asks for the letter only.</div>
+    <p>The two-pass cost is largely cached away — collect-once, a slice trainer for the bottom of Pass-2,
+      and the KV-cache at inference:</p>
+    <img class="diagram" src="assets/caching-en.svg" alt="Time saved by caching: collect-once, slice, inference KV-cache">
+    <p>The whole cycle for 0.5B–8B models runs locally on a laptop with 4&nbsp;GB VRAM (RTX 3050) via
+      nf4 + the slice-trainer. The Python API (<code>ActivationDatasetCollector</code>, <code>Trainer</code>,
+      <code>TrainerConfig</code>) mirrors the CLI for full control.</p>
   </section>
 
   <section id="agent">
     <h2>Agentic runtime</h2>
-    <p>Run the trained wrapper inside an agent loop — tools, history, and a calibrated decision to
-      answer, look something up, or refuse. The runtime is thin: it adds the agent <i>layer</i>
-      (loop, tools), not a second copy of the two-pass core.</p>
-<pre>meta-agent run --run-dir runs/my <span class="s">"What is the capital of France?"</span>
-<span class="c"># reads run.json (model, layers, checkpoint) — nothing to type by hand</span></pre>
-    <h3>Native tool-use, not hand-rolled ReAct</h3>
-    <p>Live instruct models do not hold a text "Action: tool[arg]" protocol — they invent a fake
-      Observation and never stop. So the prompt is built with the model's own
-      <code>apply_chat_template(tools=…)</code>, and the output is parsed in its native tool format
-      (<code>&lt;function=…&gt;</code> / JSON).</p>
-    <table>
-      <tr><th>Piece</th><th>Role</th></tr>
-      <tr><td><code>MetaAgent</code> · <code>Session</code></td><td>the loop + conversation state.</td></tr>
-      <tr><td><code>ToolRegistry</code> · <code>Tool</code></td><td>tools the model may call.</td></tr>
-      <tr><td><code>NativeToolPrompt</code> / <code>NativeToolRenderer</code></td><td>build the native prompt / parse the native tool call.</td></tr>
-      <tr><td><code>StopBackend</code></td><td>truncates at the turn's stop strings (else the model plays both roles).</td></tr>
-      <tr><td><code>InferenceBackend</code></td><td>the seam below Policy: <code>MetaSpiderBackend</code> (GPU), <code>LlamaCppBackend</code> (CPU), … each pulls its own heavy dependency lazily.</td></tr>
-    </table>
-    <div class="note"><b>Thinking gotcha, in one place.</b> Disabling reasoning carries <i>both</i> keys
-      (<code>enable_thinking</code> + <code>thinking</code>) — different families name it differently;
-      the unused one is ignored by the chat template.</div>
+    <p>Run the wrapper in a tool-use loop. The uncertainty signal routes into the <i>action</i> —
+      answer / call a tool / clarify / refuse — via native tool-calling (the tokenizer's own format), not
+      hand-rolled ReAct text.</p>
+<pre>meta-agent run --run-dir runs/my "Book me a flight to Tokyo"      <span class="c"># tools + history loop</span>
+meta-agent chat --run-dir runs/my                                <span class="c"># interactive</span></pre>
+    <div class="note"><b>Decision, not generation.</b> The signal is strongest at the short decision point;
+      over long tool-output it's gated (decide-then-detach) so it routes without corrupting generation.</div>
   </section>
 
   <section id="deploy">
-    <h2>Deploy to llama.cpp</h2>
-    <p>The wrapper is fully separable from the frozen base, so the trained Doubter runs on
-      CPU through llama.cpp — no GPU, no PyTorch at inference.</p>
-    <ol>
-      <li>Export the wrapper to a <b>GGUF sidecar</b> (encoder + cross-attention weights).</li>
-      <li>The base runs as a quantized GGUF (e.g. <code>Q4_K_M</code>).</li>
-      <li>A meta-adapter injects cognitive tokens at the control-vector hook; a two-pass
-        driver taps activations, runs the encoder, then generates with injection.</li>
-      <li>Optional <b>dynamic refresh</b> re-encodes cognitive tokens during long
-        generations (cosine-similarity gated).</li>
-    </ol>
-<pre>metadeploy export --run-dir runs/my            <span class="c"># wrapper → doubter_sidecar.gguf</span>
+    <h2>Deploy to llama.cpp — without a GPU</h2>
+    <p>Export the trained wrapper to a <b>GGUF sidecar</b> + ggml/C++ forward, so calibrated refusal runs
+      on a quantized base with <b>no CUDA or PyTorch</b> (CPU, Metal, edge).</p>
+<pre>metadeploy export --run-dir runs/my        <span class="c"># → doubter_sidecar.gguf</span>
+<span class="c"># load the sidecar in the llama.cpp fork; the gain knob lives in META_GAIN</span>
+META_GAIN=1.0 llama-meta-generate -m base.gguf --meta doubter_sidecar.gguf -p "…"</pre>
+    <div class="note">The sidecar is the wrapper weights only (float32, encoder + cross-attention + gates)
+      + config in GGUF metadata. Calibrated refusal holds down to Q4_K_M. Build + patch in the
+      <code>meta-deploy</code> package README.</div>
+  </section>
 
-<span class="c"># two-pass inference inside the llama.cpp fork (CPU, no PyTorch):</span>
-META_SIDECAR=doubter_sidecar.gguf META_LAYERS=16,17,18,19,20,21,22,23 \
-META_PROMPT=<span class="s">"What is the capital of France?"</span> \
-  ./build/bin/llama-meta-generate -m base.Q4_K_M.gguf -c 2048 -t 4</pre>
-    <p>Build the fork and the <code>llama-meta-generate</code> example as described in the
-      <code>meta-deploy</code> README (<code>llama_patch/</code> applies to llama.cpp base
-      <code>b9619</code>).</p>
-    <div class="note"><b>Robustness.</b> The self-assessment signal survives 4-bit
-      compression: behavior (refuse / answer) holds down to <code>Q4_K_M</code> with
-      negligible loss.</div>
+  <!-- ============================ REFERENCE ============================ -->
+  <section id="architecture">
+    <h2>Architecture: four packages</h2>
+    <img class="diagram" src="assets/packages-en.svg" alt="Four packages: meta-core shared by meta-loom, meta-agent, meta-deploy">
+    <table>
+      <tr><th>Package</th><th>What it does</th><th>Key classes</th></tr>
+      <tr><td><code>meta-core</code><br><span class="c">inference</span></td>
+        <td>The two-pass mechanism: frozen base + wrapper, hooks, cognitive encoder, gated cross-attention,
+          the checkpoint contract. All you need to <i>run</i> a trained wrapper. Depends on nothing.</td>
+        <td><code>MetaSpiderPipeline</code>, <code>Doubter</code>, <code>Watchdog</code>,
+          <code>ConfidenceProbe</code>, <code>ActivationCollector</code></td></tr>
+      <tr><td><code>meta-loom</code><br><span class="c">train + eval</span></td>
+        <td>Collect, train (two-pass backprop through the frozen base), eval honestly; the diverse-mix
+          factory. → Core + Agent.</td>
+        <td><code>metaloom</code> CLI, <code>Trainer</code>, <code>build_universal</code>,
+          <code>agentic_mix</code></td></tr>
+      <tr><td><code>meta-agent</code><br><span class="c">agentic runtime</span></td>
+        <td>Agent loop with tools + history; native tool-use for instruct models. → Core.</td>
+        <td><code>MetaAgent</code>, <code>Session</code>, <code>NativeToolPrompt</code></td></tr>
+      <tr><td><code>meta-deploy</code><br><span class="c">llama.cpp</span></td>
+        <td>Export to a GGUF sidecar + ggml/C++ forward; run without CUDA/PyTorch. → Core.</td>
+        <td><code>metadeploy export</code>, <code>export_sidecar</code></td></tr>
+    </table>
+    <p>The core is shared by all; training / agency / deployment are three independent consumers. Production
+      inference installs only <code>meta-core</code>.</p>
   </section>
 
   <section id="api">
     <h2>API reference</h2>
     <h3>CLI</h3>
     <ul>
-      <li><code>metaloom collect|train|eval --run-dir &lt;dir&gt;</code> — the training pipeline; stages share a <code>run.json</code> manifest</li>
-      <li><code>meta-agent run --run-dir &lt;dir&gt; "question"</code> — agentic / chat runtime (reads the manifest)</li>
-      <li><code>metadeploy export --run-dir &lt;dir&gt;</code> — export the wrapper to a GGUF sidecar for llama.cpp</li>
+      <li><code>metaloom collect|train|eval --run-dir &lt;dir&gt;</code> — the training pipeline; stages share <code>run.json</code></li>
+      <li><code>metaloom build-universal --model-name N</code> — the diverse-mix factory (a general wrapper)</li>
+      <li><code>meta-agent run|chat --run-dir &lt;dir&gt;</code> — agentic runtime</li>
+      <li><code>metadeploy export --run-dir &lt;dir&gt;</code> — GGUF sidecar</li>
     </ul>
-    <h3>Pipeline</h3>
+    <h3>Python (meta-core)</h3>
     <ul>
-      <li><code>MetaSpiderPipeline.from_pretrained(cfg)</code> — load + freeze base, init collector.</li>
-      <li><code>.attach(modifier)</code> / <code>.detach(modifier)</code> / <code>.detach_all()</code></li>
-      <li><code>.generate(prompt, max_new_tokens=…, dynamic_refresh=False)</code> — two-pass inference.</li>
-    </ul>
-    <h3>Modifier</h3>
-    <ul>
-      <li><code>Doubter(DoubterConfig)</code> — build a new wrapper.</li>
-      <li><code>Doubter.from_checkpoint(path)</code> / <code>.save_checkpoint(path)</code></li>
-    </ul>
-    <h3>Training</h3>
-    <ul>
-      <li><code>ActivationDatasetCollector(pipe, …).collect(questions, ground_truths)</code></li>
-      <li><code>Trainer(doubter, pipe, TrainerConfig).train(train, val_samples=…)</code></li>
-    </ul>
-    <h3>Evaluation</h3>
-    <ul>
-      <li><code>BaselineComparison(pipe, benchmark).run()</code> → <code>ComparisonReport</code> (selective QA)</li>
-      <li><code>AgentComparison(pipe, doubter=…, …).run(tasks)</code> → agentic eval via Meta-Agent</li>
-      <li><code>QABenchmark</code>, <code>BenchmarkTask</code>, <code>AgentTask</code></li>
-      <li><code>harness.classify_action(text)</code> → <code>"confirm" | "correct" | "refuse"</code></li>
+      <li><code>MetaSpiderConfig(model_name, target_layers, cross_attn_layers, dtype, quantization, …)</code></li>
+      <li><code>MetaSpiderPipeline.from_pretrained(cfg)</code> → <code>.attach()</code> / <code>.detach_all()</code> / <code>.generate()</code> / <code>.set_gain()</code></li>
+      <li><code>Doubter.from_checkpoint(path)</code> · <code>.set_gain(x)</code> · <code>.save_checkpoint(path)</code></li>
+      <li><code>Watchdog(ConfidenceProbe)</code> · <code>.score(pipe, prompt).is_uncertain</code></li>
     </ul>
   </section>
 
   <section id="faq">
     <h2>FAQ</h2>
     <h3>Does this make the model smarter?</h3>
-    <p>No. It does not add knowledge — it surfaces an existing internal uncertainty signal so
-      the model answers when confident and refuses when not. It turns "answer at random" into
-      "answer when confident".</p>
-    <h3>Which base models are supported?</h3>
-    <p>Any HF decoder LM — Llama, Gemma (2/3/4), Qwen, Mistral, GPT-2. Layer discovery is
-      family-agnostic, including nested multimodal configs.</p>
-    <h3>How big is the wrapper?</h3>
-    <p>~2% of the base (e.g. ~188M on an 8B model). The base is never updated.</p>
-    <h3>Can I train on a small GPU?</h3>
-    <p>Yes — use <code>quantization="nf4"</code> + <code>gradient_checkpointing=True</code>.
-      Gradients still flow through the frozen 4-bit base to the wrapper.</p>
+    <p>No. It surfaces an existing internal uncertainty signal and turns "answer at random" into "answer
+      when confident; otherwise refuse / look up / ask". It adds no knowledge.</p>
+    <h3>Why not just prompt the model to be unsure?</h3>
+    <p>Because a prompt can't reach the latent channel — measured, the text prompt is nearly inert while
+      the wrapper moves the decision in multiples. See <a href="#vs-prompt">the comparison</a>.</p>
     <h3>Does a wrapper transfer across models?</h3>
-    <p>No. It is calibrated to one model's activation distribution. Attaching a base-trained Doubter to
-      an instruct fine-tune (or a different model) pushes hidden states out of distribution and breaks
-      generation — retrain on the target model's activations.</p>
-    <h3>What about very long generations?</h3>
-    <p>The uncertainty signal can self-amplify and loop. Turn on <b>AGC</b> (see
-      <a href="#how-it-works">How it works</a>) to hold it at a setpoint.</p>
+    <p>No — it's calibrated to one base's activation distribution; it won't glue onto a different model or
+      even a different fine-tune. Use <a href="#factory">build-universal</a> per model.</p>
+    <h3>How big is the wrapper? Can I train on a small GPU?</h3>
+    <p>~2% of the base. The whole collect→train→eval cycle for 0.5B–8B runs on a 4&nbsp;GB laptop GPU via
+      nf4 + the slice trainer.</p>
   </section>
-  </div><!-- /.en -->
+  </div>
 
   <div class="ru">
+  <!-- ============================ НАЧАЛО ============================ -->
   <section id="introduction-ru">
     <h1>meta-spider</h1>
-    <p class="lead">Инструментарий для <b>архитектурной интроспекции</b> языковых моделей:
-      дать замороженной LLM канал обратной связи к собственным активациям, чтобы она научилась
-      <b>понимать, когда себе доверять</b> — отвечать уверенно или честно отказываться.</p>
-    <p>Вместо текстовой рефлексии («подумай ещё раз») meta-spider читает скрытые состояния
-      модели, сжимает их в <b>когнитивные токены</b> и впрыскивает обратно через гейтированное
-      перекрёстное внимание (cross-attention). Базовая модель остаётся <b>замороженной</b>;
-      обучается только тонкая обвязка (~2% параметров). Результат — <b>селективное
-      предсказание</b>: модель воздерживается на вопросах, где ошиблась бы.</p>
+    <p class="lead">Тонкая обучаемая обвязка, дающая <b>замороженной</b> LLM канал обратной связи к её
+      собственным активациям — модель учится, <b>когда себе доверять</b>: ответить уверенно или честно
+      отказаться / поискать / уточнить.</p>
+    <p>Вместо текстовой рефлексии («подумай ещё раз») meta-spider читает скрытые состояния обучаемым
+      энкодером, сжимает в <b>когнитивные токены</b> и впрыскивает обратно через cross-attention с врата́ми.
+      Веса базы не меняются — учится только обвязка (~2% параметров). Итог — <b>селективное предсказание</b>:
+      модель воздерживается на вопросах, где ошиблась бы. И ключевое: этот латентный канал <b>недостижим
+      промптингом</b>.</p>
     <img class="diagram" src="assets/overview-ru.svg" alt="Meta-Spider — общая картина: фабрика строит обвязку, она читает и впрыскивает на замороженной базе, ей рулят (ручка) или просто читают (Сторож), деплоят везде">
     <div class="grid">
-      <div class="card"><h3>Замороженная база</h3><p>Веса LLM не меняются. Градиенты текут
-        <i>сквозь</i> замороженную базу к обвязке; база работает как прокси-функция потерь.</p></div>
-      <div class="card"><h3>Двухпроходный инференс</h3><p>Проход 1 читает активации → когнитивные
-        токены. Проход 2 генерирует с этими токенами, впрыснутыми через cross-attention.</p></div>
-      <div class="card"><h3>Честная калибровка</h3><p>Метрики считаются против оракула
-        («ошиблась бы база?»), а не наивных эвристик.</p></div>
-      <div class="card"><h3>Обучи раз — разверни где угодно</h3><p>Обучение в PyTorch, экспорт
-        GGUF-сайдкара, запуск на CPU через llama.cpp — без GPU на инференсе.</p></div>
+      <div class="card"><h3>Замороженная база</h3><p>Веса LLM не меняются. Градиенты текут <i>сквозь</i>
+        замороженную базу к обвязке; база работает как proxy-loss.</p></div>
+      <div class="card"><h3>Латент, не текст</h3><p>Сигнал неуверенности живёт в residual, вытаскивается
+        пробой — промпт до него не достаёт (см. <a href="#vs-prompt-ru">сравнение</a>).</p></div>
+      <div class="card"><h3>Честная калибровка</h3><p>Метрики против оракула («ошиблась бы база?»), а не
+        наивных эвристик.</p></div>
+      <div class="card"><h3>Обучил раз — деплой везде</h3><p>Обучение в PyTorch, экспорт GGUF-sidecar,
+        запуск на CPU через llama.cpp — без GPU на инференсе.</p></div>
     </div>
     <span class="pill">замороженная база</span><span class="pill">cross-attention</span>
-    <span class="pill">селективное предсказание</span><span class="pill">QLoRA-style nf4</span>
-    <span class="pill">деплой в llama.cpp</span>
-    <img class="diagram" src="assets/workflow-ru.svg" alt="Весь конвейер: collect, train, eval, затем агент или деплой">
+    <span class="pill">селективное предсказание</span><span class="pill">nf4</span>
+    <span class="pill">llama.cpp деплой</span>
   </section>
 
   <section id="install-ru">
     <h2>Установка</h2>
-    <p>meta-spider требует Python 3.10+, PyTorch и Transformers. Квантованные базы
-      (<code>nf4</code>/<code>int8</code>) дополнительно требуют <code>bitsandbytes</code>.</p>
-    <p><b>Четыре пакета</b>, каждый в своей папке внутри <code>meta-spider-framework/</code>:
-      <code>meta-core</code> (примитивы инференса — чистое ядро, не зависит ни от чего),
-      <code>meta-agent</code> (агентный рантайм → Core), <code>meta-loom</code> (обучение + оценка →
-      Core <b>+ Agent</b>), <code>meta-deploy</code> (деплой в llama.cpp → Core). Прод-инференс
-      ставит только <code>meta-core</code>.</p>
-<pre><span class="c"># editable-установка из исходников</span>
-git clone &lt;repo&gt; &amp;&amp; cd meta-spider-framework
-pip install -e meta-core -e meta-agent -e meta-loom   <span class="c"># или только meta-core для инференса</span>
-pip install -e meta-deploy                            <span class="c"># опц.: экспорт в llama.cpp (GGUF-сайдкар)</span>
+    <p>meta-spider — <b>четыре pip-пакета</b> в <code>meta-spider-framework/</code>. Прод-инференсу нужен
+      только <code>meta-core</code>.</p>
+<pre><span class="c"># из папки meta-spider-framework (editable-установка)</span>
+git clone https://codeberg.org/imperius/meta-spider &amp;&amp; cd meta-spider
+pip install -e meta-core -e meta-agent -e meta-loom   <span class="c"># или только meta-core для запуска обвязки</span>
+pip install -e meta-deploy                            <span class="c"># опц.: экспорт в llama.cpp (GGUF)</span>
 
-<span class="c"># зависимости рантайма</span>
-pip install transformers datasets accelerate
-pip install bitsandbytes  <span class="c"># опц.: nf4/int8 квантованные базы</span></pre>
-    <div class="note"><b>Замечание.</b> Gated-базы (Llama, Gemma-it) требуют принятой лицензии
-      и <code>HF_TOKEN</code>. Базы под Apache-2.0 (напр. Gemma&nbsp;4) грузятся без токена.</div>
+<span class="c"># runtime-зависимости</span>
+pip install "transformers&gt;=5.11" datasets accelerate
+pip install bitsandbytes   <span class="c"># опц.: nf4 / int8 квантованные базы</span></pre>
+    <div class="warn"><b>torch ≥ 2.5.</b> Свежий <code>transformers</code> зовёт <code>nn.Module.set_submodule</code>
+      (добавлен в torch 2.5). Gated-базы (Llama, Gemma-it) требуют принятой лицензии + <code>HF_TOKEN</code>.</div>
   </section>
 
   <section id="quickstart-ru">
     <h2>Быстрый старт</h2>
-    <p>Загрузите замороженную базу, привяжите обученный <code>Doubter</code> (Скептик) и
-      генерируйте. Двухпроходный механизм пайплайн обрабатывает автоматически.</p>
+    <p>Загрузить замороженную базу, прицепить обученный <code>Doubter</code>, генерить. Двухпроходный
+      механизм — под капотом.</p>
 <pre><span class="k">from</span> meta_core <span class="k">import</span> MetaSpiderConfig, MetaSpiderPipeline, Doubter
 
 cfg = MetaSpiderConfig(
-    model_name=<span class="s">"google/gemma-2-2b-it"</span>,
-    device=<span class="s">"cuda"</span>, dtype=<span class="s">"float16"</span>,
-    quantization=<span class="s">"nf4"</span>,                <span class="c"># 4-битная замороженная база (влезает в малые GPU)</span>
-    target_layers=[<span class="n">10</span>,<span class="n">14</span>,<span class="n">18</span>,<span class="n">22</span>,<span class="n">25</span>],   <span class="c"># откуда читаются активации</span>
-    cross_attn_layers=[<span class="n">6</span>,<span class="n">12</span>,<span class="n">18</span>,<span class="n">24</span>],   <span class="c"># куда впрыскиваются когнитивные токены</span>
+    model_name=<span class="s">"Qwen/Qwen2.5-14B-Instruct"</span>,
+    device=<span class="s">"cuda"</span>, dtype=<span class="s">"bfloat16"</span>, quantization=<span class="s">"nf4"</span>,
+    target_layers=<span class="s">"late"</span>, cross_attn_layers=<span class="s">"late"</span>,   <span class="c"># или явно [32,…,47]</span>
 )
 pipe = MetaSpiderPipeline.from_pretrained(cfg)
 pipe.attach(Doubter.from_checkpoint(<span class="s">"doubter.pt"</span>))
 
-print(pipe.generate(<span class="s">"What is the capital of France?"</span>))
-<span class="c"># → "The capital of France is Paris."</span>
-print(pipe.generate(<span class="s">"Who wrote the 1953 novel 'A Kid for Two Farthings'?"</span>))
-<span class="c"># → "I'm not confident enough to answer this question accurately."</span></pre>
-    <p>Размерности (<code>hidden_dim</code>, <code>num_layers</code>) определяются автоматически
-      из базы. Выбор слоёв принимает явные списки или пресеты <code>"all"</code> / <code>"late"</code>.</p>
-    <div class="note"><b>Хотите обучить свой?</b> Быстрый путь — CLI <code>metaloom</code>:
-      <code>collect → train → eval</code> в три команды. См. <a href="#training-ru">Обучение</a>.</div>
+print(pipe.generate(<span class="s">"Какая столица Франции?"</span>))
+<span class="c"># → «Столица Франции — Париж.»</span>
+print(pipe.generate(<span class="s">"&lt;неотвечаемый / с ложной посылкой вопрос&gt;"</span>))
+<span class="c"># → «I'm not confident enough to answer this question accurately.»</span></pre>
+    <p>Размерности авто-детект; <code>target_layers</code> принимает явные списки или пресеты
+      <code>"all"</code> / <code>"late"</code>. Готовые обвязки:
+      <a href="https://huggingface.co/Imperius/meta-qwen-14b-universal">meta-qwen-14b-universal</a>.</p>
   </section>
 
-  <section id="how-it-works-ru">
-    <h2>Как это работает</h2>
+  <!-- ============================ КАК ЭТО РАБОТАЕТ ============================ -->
+  <section id="mechanism-ru">
+    <h2>Механизм мета-внимания</h2>
+    <p>Идея: обучаемый энкодер извлекает сигнал неуверенности из языковой модели и подаёт его обратно,
+      хирургически, через головы мета-внимания и врата на выбранных слоях.</p>
+    <h3>Основные компоненты</h3>
+    <ul>
+      <li><b>Хуки активаций</b> — снимают скрытые состояния базы.</li>
+      <li><b>Когнитивный энкодер</b> — сжимает активации в <b>когнитивные токены</b> (по одному на слой).</li>
+      <li><b>Врата</b> — скалярный (tanh) множитель: сколько интроспекции нужно слою.</li>
+      <li><b>Головы мета-внимания</b> — по одной на слой; cross-attention, подмешивающий свой когнитивный
+        токен в свой слой. Здесь и происходит инъекция.</li>
+    </ul>
+    <img class="diagram" src="assets/components-ru.svg" alt="Компоненты: хуки активаций, когнитивный энкодер, врата, головы мета-внимания">
+
+    <h3>Двухпроходная инъекция</h3>
+    <p>Один прогон = <b>два прохода одной замороженной модели</b>.</p>
+<pre><span class="c">Pass 1 (читать):  промпт → замор. база → хуки снимают скрытые состояния последнего токена</span>
+<span class="c">                  → когнитивный энкодер → когнитивные токены (по одному на слой) → буфер</span>
+<span class="c">Pass 2 (писать):  промпт + впрыснутые токены через cross-attention с врата́ми</span>
+<span class="c">                  → замор. база генерит ответ (или честный отказ)</span></pre>
     <img class="diagram" src="assets/two-pass-ru.svg" alt="Двухпроходная инъекция: Pass 1 читает активации, Pass 2 впрыскивает токены">
-    <p>Один запуск = <b>два прямых прохода одной замороженной модели</b>.</p>
-<pre><span class="c">Проход 1 (чтение): текст → замороженная LLM → хуки ловят hidden state последнего токена</span>
-<span class="c">                   → когнитивный энкодер → когнитивные токены (по одному на слой) → буфер</span>
-<span class="c">Проход 2 (запись): текст + впрыснутые когнитивные токены через гейтированный cross-attention</span>
-<span class="c">                   → замороженная LLM генерирует ответ (или честный отказ)</span></pre>
-    <p>При обучении добавляется обратный проход: функция потерь — обычная языковая кросс-энтропия
-      на таргете, а градиенты текут назад сквозь замороженную базу к энкодеру и cross-attention.
-      База — пассивный передатчик: её веса не обновляются, но вычислительный граф сквозь неё
-      существует. По сути <b>сама базовая модель и есть функция потерь для обвязки</b>.</p>
-    <div class="note"><b>Почему заморожена?</b> Любая разморозка (LoRA, частичная) даёт модели
-      срезать путь через собственные веса, и калибровка отказа разваливается. Заморозка базы
-      заставляет сигнал идти через интроспективный канал.</div>
 
-    <h3>Длинная генерация: AGC</h3>
-    <img class="diagram" src="assets/agc-ru.svg" alt="AGC: сигнал неуверенности самоусиливается; регулятор усиления держит его на setpoint">
-    <p>На длинной генерации впрыснутая неуверенность <b>самоусиливается</b> — живой residual всё сильнее
-      тянется к когнитивным токенам по мере роста дрейфа — и модель может уйти в петлю отказа.
-      <b>AGC</b> (Automatic Gain Control, термин из схемотехники) это гасит: коэффициент
-      <code>α = floor + (1−floor)·e^(−шаг/τ)</code> стартует с максимума и убывает к <code>floor</code>,
-      доливая против «стока», — сомнение держится на ровном setpoint, а не убегает. Это opt-in —
-      валидированный режим коротких генераций не трогается.</p>
+    <h3>Обучение обвязки</h3>
+    <p>Обучение добавляет backward поверх двух проходов. Градиент течёт <i>сквозь</i> замороженную базу к
+      обвязке — веса базы не меняются, но граф сквозь них существует, поэтому сама база LLM работает как
+      функция потерь. Коллектор прогоняет вопросы через базу, снимает активации и метит ответ верно/неверно
+      (<b>оракул</b>); обвязка учится инъектировать так, чтобы модель отказывалась ровно там, где ошиблась бы.</p>
+    <img class="diagram" src="assets/training-ru.svg" alt="Обучение: коллектор + оракул, затем forward/backward сквозь замороженную базу">
+    <div class="note"><b>Где живёт сигнал.</b> Свип линейной пробы по слоям/слотам: неуверенность линейно
+      декодируема в основном в <b>поздней трети</b> — потому <code>target_layers="late"</code> читает там, а
+      не весь стек.</div>
 
-    <h3>Ручка: коэффициент усиления <small>(v0.2)</small></h3>
-    <p>Тот же коэффициент инъекции становится <b>непрерывной ручкой управления</b>, если задать его
-      вручную, а не пускать на затухание. <code>gain=1.0</code> — обученный baseline; <code>&gt;1</code>
-      усиливает сомнение (больше отказов), <code>&lt;1</code> ослабляет, <code>&lt;0</code> инвертирует —
-      толкает модель к уверенности. Композируется с обученными гейтами и с AGC.</p>
-<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter
-doubter = Doubter.from_checkpoint(<span class="s">"doubter.pt"</span>); pipe.attach(doubter)
-doubter.set_gain(<span class="n">1.5</span>)   <span class="c"># осторожнее — больше отказов</span>
-doubter.set_gain(<span class="n">-0.5</span>)  <span class="c"># увереннее — инверсия инъекции</span>
-pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># микшерный пульт: крутит все прицепленные модификаторы</span></pre>
-    <p>В отличие от LoRA — статической весовой дельты, запутывающей поведение в веса — это
-      <b>изолированный канал</b>, который крутится на инференсе; несколько модификаторов суммируются на
-      одном residual stream, каждый со своим gain: микшерный пульт для поведения.</p>
-    <div class="note"><b>Диапазон.</b> Валидировано монотонно на 12B instruct-модели: <code>gain</code>
-      0 → 1.5 плавно крутит отказ; за ~1.5–2.0 положительная ОС инъекции срывается — у потолка сочетать
-      статический gain с AGC. Это ручка <b>покрытия</b>, не калибровки: управляет тем, сколько модель
-      воздерживается, а не тем, насколько умны воздержания.</div>
+    <h3>Автоматическая регулировка усиления (AGC)</h3>
+    <p>На длинной генерации впрыснутый сигнал <b>самоусиливается</b> (положительная ОС — каждый всплеск
+      наполняет «бак») и модель сваливается в петлю отказа. <b>AGC</b> (термин из аналоговой схемотехники)
+      это гасит: затухание тянет силу инъекции обратно к нижнему порогу, держа её на setpoint, а не давая
+      петле раскрутиться. Композируется с обученными врата́ми и с <a href="#gain-ru">ручкой gain</a>.</p>
+    <img class="diagram" src="assets/agc-ru.svg" alt="AGC: сигнал неуверенности самоусиливается; регулятор держит его на setpoint">
+    <div class="note"><b>Два прохода по цене ~одного.</b> Снимки Pass-1 кэшируются на collect (база
+      заморожена → константа); неинъектируемый низ Pass-2 кэшируется (<code>cut_hidden</code>); на инференсе
+      переиспользуются когнитивные токены + KV-кэш базы. Схема кэширования — в <a href="#train-ru">Обучить свою</a>.</div>
+  </section>
 
-    <h3>Зачем обвязка, если можно просто попросить модель быть неуверенной?</h3>
-    <p>Потому что латентный канал недостижим промптингом. В честном 2×2 (обоим армам разрешено сказать
-      «не уверен») на <b>Qwen2.5-14B</b> текст-промт, который просто <i>просит</i> быть осторожнее, почти
-      <b>инертен</b>, а обвязка двигает решение решительно:</p>
+  <section id="metrics-ru">
+    <h2>Честные метрики (база vs Doubter, правильно)</h2>
+    <p>Doubter превращает «всегда отвечать» в «ответить или отказаться» — обычная accuracy обманчива, отказ
+      это не неверный ответ. Нужны метрики <b>селективного предсказания</b>: не «как часто права вообще», а
+      «права ли на том, что <i>выбрала</i> ответить, и обоснованы ли отказы».</p>
+    <p>Трюк — <b>оракул</b>: заранее прогнать чистую базу и записать, ответила бы она верно
+      (<code>pass1_correct</code>). Каждый вопрос ложится в одну из четырёх клеток:</p>
+    <table>
+      <tr><th></th><th>модель ответила</th><th>модель отказалась</th></tr>
+      <tr><td><b>база была бы права</b></td><td>✅ верный ответ</td><td>⚠️ пере-отказ (замолчала зря)</td></tr>
+      <tr><td><b>база была бы неправа</b></td><td>❌ уверенная ошибка</td><td>✅ обоснованный отказ</td></tr>
+    </table>
+    <p>Хедлайн-метрики (числа — реальный прогон Gemma-4-12B):</p>
+    <ul>
+      <li><b>selective accuracy</b> — из отвеченного доля верного (добавленная ценность). Gemma-hard
+        <b>53.2 → 72.0%</b> (p=0.001).</li>
+      <li><b>refusal precision</b> vs оракул — насколько прицельны отказы.</li>
+      <li><b>over-refusal rate</b> — цена осторожности.</li>
+    </ul>
+    <img class="diagram" src="assets/metrics-ru.svg" alt="Откуда берутся метрики: 2×2 исходов">
+    <div class="warn"><b>Пере-отказ — известная цена, не провал.</b> Критерий пользы — двигается ли selective
+      accuracy, а не доля отказов.</div>
+  </section>
+
+  <!-- ============================ ВОЗМОЖНОСТИ ============================ -->
+  <section id="vs-prompt-ru">
+    <h2>Мета-внимание vs текст-промт</h2>
+    <p>Очевидная альтернатива обученной обвязке — просто <i>попросить</i> модель быть осторожной в
+      системном промпте. Не работает — <b>латентный канал недостижим промптингом</b>. В честном 2×2 на
+      <b>Qwen2.5-14B</b> (обоим армам разрешено сказать «не уверен») текст-промт почти <b>инертен</b> на
+      осях, где неуверенность и решает, а обвязка двигает решение решительно.</p>
     <div class="grid">
       <div class="card"><h3>Воздержаться, когда тула нет</h3><p>база 0.27 → текст-промт 0.33 →
         <b>обвязка 0.67</b>.</p></div>
@@ -743,327 +639,183 @@ pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># микшерн
         → <b>обвязка 0.87</b>.</p></div>
       <div class="card"><h3>Ловить ошибки базы (MMLU-Pro)</h3><p>обвязка флагает <b>78%</b> вопросов, где
         база ошибается; текст-промт — 14%.</p></div>
+      <div class="card"><h3>Selective accuracy (MMLU-Pro)</h3><p>обвязка <b>0.585 → 0.622</b>; текст-промт
+        не двигает ни отказ (0.097 → 0.097), ни точность.</p></div>
     </div>
-    <div class="note"><b>Читать правильно.</b> Мерить сигнал тем каналом, в который обвязка обучена
-      выражаться — она <i>генерит</i> фразу-отказ («I'm not confident enough to answer»), поэтому детект
-      отказа по генерации, а не искусственной «UNSURE»-опцией MCQ (такой ридаут показывает её инертной).
+    <div class="note"><b>Читать сигнал верным каналом.</b> Обвязка обучена <i>генерить</i> фразу-отказ
+      («I'm not confident enough to answer»), поэтому детект отказа по генерации — а не искусственной
+      «UNSURE»-опцией MCQ (такой ридаут показывает обвязку инертной). Сохранять сырые генерации → мисматч
+      ридаута ловится глазами и перегрейживается офлайн.
       <span class="c">docs/results/qwen-14b/text-vs-latent.md</span></div>
   </section>
 
-  <section id="architecture-ru">
-    <h2>Архитектура: четыре пакета</h2>
-    <img class="diagram" src="assets/packages-ru.svg" alt="Четыре пакета: meta-core как общее ядро + три потребителя">
-    <p>Фреймворк — это <b>четыре pip-пакета</b> внутри <code>meta-spider-framework/</code>, у каждого
-      одна задача и чистый граф зависимостей — ставите только то, что нужно.</p>
-    <table>
-      <tr><th>Пакет</th><th>Что делает</th><th>Ключевые классы</th></tr>
-      <tr>
-        <td><code>meta-core</code><br><span class="c">ядро</span></td>
-        <td><b>Примитивы инференса</b> — двухпроходный механизм: замороженная база + тонкая обвязка,
-          хуки, когнитивный энкодер, гейтированный cross-attention, контракт формата чекпойнта.
-          Без обучения, без бенчмарков. Чистое ядро — <b>не зависит ни от чего</b>; прод-инференс
-          ставит только его.</td>
-        <td><code>MetaSpiderPipeline</code>, <code>Doubter</code>, <code>ActivationCollector</code>,
-          <code>BottleneckCrossAttention</code>, энкодеры, <code>IntrospectionCache</code></td>
-      </tr>
-      <tr>
-        <td><code>meta-loom</code><br><span class="c">обучение + оценка</span></td>
-        <td><b>Инструментарий обучения и оценки.</b> Обучает обвязку на ваших данных (двухпроходный
-          backprop сквозь замороженную базу) и честно измеряет приносимую пользу. Зависит от
-          <b>Core + Agent</b>.</td>
-        <td><code>Trainer</code>, <code>ActivationDatasetCollector</code>,
-          <code>BaselineComparison</code> (QA), <code>AgentComparison</code> (агентная),
-          <code>EvalHarness</code>, <code>OpenRouterJudge</code>; CLI <code>metaloom</code>
-          (<code>collect</code>/<code>train</code>/<code>eval</code>)</td>
-      </tr>
-      <tr>
-        <td><code>meta-agent</code><br><span class="c">агентный рантайм</span></td>
-        <td><b>Агентный рантайм + чат</b> для двухпроходной обвязки. Стандартная агентная петля
-          (инструменты, история) плюс единственный шов — <code>ActionRenderer</code> — превращающий
-          латентное решение в действие. Нативный tool-calling для instruct-моделей. Зависит от
-          <b>Core</b>.</td>
-        <td><code>MetaAgent</code>, <code>Session</code>, <code>ToolRegistry</code>,
-          <code>NativeToolPrompt</code>/<code>NativeToolRenderer</code>, <code>StopBackend</code>,
-          <code>ChatLoop</code></td>
-      </tr>
-      <tr>
-        <td><code>meta-deploy</code><br><span class="c">деплой в llama.cpp</span></td>
-        <td><b>Обучи в PyTorch, разверни в llama.cpp.</b> Экспортирует обученную обвязку в
-          GGUF-сайдкар + ggml/C++ прямой проход (энкодер + cross-attention), чтобы калиброванный
-          отказ работал на квантованной базе без CUDA/PyTorch — CPU, Metal, edge. Энкодер и CA
-          сверены с PyTorch (разница ~1e-7); end-to-end проверено на Qwen2.5-0.5B. Зависит от
-          <b>Core</b>.</td>
-        <td><code>export_sidecar</code>/<code>export_from_run_dir</code>, CLI <code>metadeploy</code>,
-          ggml <code>meta_selective</code>/<code>meta_ca</code>, llama.cpp <code>llama-meta-generate</code></td>
-      </tr>
-    </table>
-<pre><span class="c">граф зависимостей (стрелка = «зависит от»):</span>
-meta-core   →  (ничего)                <span class="c"># чистое ядро; прод-инференс = только оно</span>
-meta-agent  →  meta-core
-meta-loom   →  meta-core + meta-agent  <span class="c"># Loom использует Agent для агентной оценки</span>
-meta-deploy →  meta-core               <span class="c"># экспорт обвязки → llama.cpp (GGUF-сайдкар)</span></pre>
-    <p>Подробнее ниже: <b>Core</b> — в <a href="#components-ru">Компонентах ядра</a> /
-      <a href="#configuration-ru">Конфигурации</a>; <b>Loom</b> — в <a href="#training-ru">Обучении</a> /
-      <a href="#evaluation-ru">Оценке</a>; <b>Agent</b> — в агентной части
-      <a href="#evaluation-ru">Оценки</a>; <b>Deploy</b> — см. README пакета <code>meta-deploy</code>
-      (<code>metadeploy export</code> + патч llama.cpp). Опциональный зонтичный шим
-      <code>meta_spider</code> ре-экспортирует имена Core+Loom для обратной совместимости.</p>
+  <section id="gain-ru">
+    <h2>Ручка неуверенности (gain)</h2>
+    <p>Коэффициент инъекции становится <b>непрерывным регулятором</b>, если задавать его вручную, а не
+      пускать на затухание AGC. <code>gain=1.0</code> — обученный baseline; <code>&gt;1</code> усиливает
+      сомнение (больше отказов), <code>&lt;1</code> ослабляет, <code>&lt;0</code> инвертирует к уверенности.</p>
+<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter
+doubter = Doubter.from_checkpoint(<span class="s">"doubter.pt"</span>); pipe.attach(doubter)
+doubter.set_gain(<span class="n">1.5</span>)   <span class="c"># осторожнее — больше отказов</span>
+doubter.set_gain(<span class="n">-0.5</span>)  <span class="c"># увереннее — инверсия инъекции</span>
+pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># микшерный пульт: крутит все прицепленные модификаторы</span></pre>
+    <img class="diagram" src="assets/gain-ru.svg" alt="Ручка gain: регулятор силы инъекции на лету; AGC не даёт сорваться">
+    <div class="note"><b>Диапазон.</b> Валидировано монотонно на 12B instruct-модели: <code>gain</code>
+      0 → 1.5 плавно крутит отказ (~2% → ~51%); за ~1.5–2.0 положительная ОС инъекции срывается — у потолка
+      сочетать статический gain с AGC. Это ручка <b>покрытия</b>, не калибровки. Один изолированный канал,
+      одна ручка на лету; несколько модификаторов суммируются на одном residual, каждый со своим gain —
+      микшерный пульт для поведения.</div>
   </section>
 
-  <section id="components-ru">
-    <h2>Компоненты ядра</h2>
-    <img class="diagram" src="assets/components-ru.svg" alt="Компоненты: хуки активаций, когнитивный энкодер, врата, головы мета-внимания">
-    <table>
-      <tr><th>Компонент</th><th>Роль</th></tr>
-      <tr><td><code>ActivationCollector</code></td><td>Прямые хуки на целевых слоях; ловит
-        hidden state последнего токена. Поиск слоёв независим от семейства модели
-        (Llama/Gemma/Qwen/GPT, вложенные мультимодальные).</td></tr>
-      <tr><td><code>Когнитивный&nbsp;энкодер</code></td><td>Сжимает активации в когнитивные токены.
-        Три варианта: <code>selective</code> (1 токен/слой, рекорд калибровки),
-        <code>multi_token</code> (обучаемые запросы), <code>transformer</code> (открывает
-        самокоррекцию).</td></tr>
-      <tr><td><code>BottleneckCrossAttention</code></td><td>Впрыскивает когнитивные токены в
-        остаточный поток. K/V — из когнитивных токенов, Q — из hidden state.
-        Бутылочное горлышко 4096→256→4096.</td></tr>
-      <tr><td><code>Гейты</code></td><td>Обучаемые скаляры <code>tanh(gate)</code> — насколько
-        мета-сигнал подмешивается на каждом слое. Два набора: гейты энкодера и гейты
-        впрыска.</td></tr>
-      <tr><td><code>ReflexionBuffer</code></td><td>Держит когнитивные токены между Проходом 1 и
-        Проходом 2.</td></tr>
-      <tr><td><code>Doubter</code></td><td>Модификатор, связывающий всё вместе: энкодер +
-        cross-attention + буфер + хуки. Привязывается к пайплайну через
-        <code>pipe.attach(doubter)</code>.</td></tr>
-    </table>
+  <section id="watchdog-ru">
+    <h2>Сторож — датчик «только чтение»</h2>
+    <p>Тот же сигнал можно использовать <b>без</b> инъекции. <code>Watchdog</code> читает когнитивный токен
+      линейной <code>ConfidenceProbe</code> и отдаёт вердикт — вы гейтите <b>внешнее</b> действие (поиск,
+      уточнение, эскалация), а <b>генерация не тронута</b>.</p>
+<pre><span class="k">from</span> meta_core <span class="k">import</span> Watchdog, ConfidenceProbe
+watch = Watchdog(ConfidenceProbe.load(<span class="s">"probe.pt"</span>))
+<span class="k">if</span> watch.score(pipe, prompt).is_uncertain:
+    docs = retrieve(...)   <span class="c"># внешнее действие — генерация не изменяется</span></pre>
+    <img class="diagram" src="assets/watchdog-ru.svg" alt="Сторож: читает когнитивный токен пробой и гейтит внешнее действие, не трогая генерацию">
+    <div class="note"><b>Почему только чтение?</b> Инъекция — модулятор <i>решения</i>, не генерации: держа
+      её на длинном выводе, копится off-task дрейф. На агентной задаче (ODEX, база решает 7/15): постоянная
+      инъекция <b>−3</b>; Сторож и точечная инъекция (впрыск только в окне решения) — оба <b>+1 без потерь</b>.
+      Проба на когнитивном токене бьёт пробу на сырой активации (AUC 0.715 vs 0.63) — энкодер добавляет ценность.</div>
   </section>
 
-  <section id="configuration-ru">
-    <h2>Конфигурация</h2>
-    <h3>MetaSpiderConfig</h3>
-    <table>
-      <tr><th>Поле</th><th>Значение</th></tr>
-      <tr><td><code>model_name</code></td><td>HF-идентификатор базовой модели.</td></tr>
-      <tr><td><code>dtype</code></td><td><code>"bfloat16"</code> (Ampere+) или <code>"float16"</code> (T4/P100).</td></tr>
-      <tr><td><code>quantization</code></td><td><code>None</code>, <code>"int8"</code>, <code>"nf4"</code>, <code>"fp4"</code> — сжатие замороженной базы.</td></tr>
-      <tr><td><code>target_layers</code></td><td>Слои для чтения. Список или <code>"all"</code> / <code>"late"</code> (верхняя треть).</td></tr>
-      <tr><td><code>cross_attn_layers</code></td><td>Слои для впрыска. По умолчанию = <code>target_layers</code>.</td></tr>
-      <tr><td><code>gradient_checkpointing</code></td><td>Меняет вычисления на память — нужно для больших баз.</td></tr>
-    </table>
-    <h3>DoubterConfig</h3>
-    <table>
-      <tr><th>Поле</th><th>Значение</th></tr>
-      <tr><td><code>encoder_type</code></td><td><code>"selective"</code> / <code>"multi_token"</code> / <code>"transformer"</code>.</td></tr>
-      <tr><td><code>num_cognitive_tokens</code></td><td>Сколько когнитивных токенов производить.</td></tr>
-      <tr><td><code>ca_bottleneck_dim</code>, <code>ca_num_heads</code></td><td>Форма cross-attention.</td></tr>
-      <tr><td><code>ca_gate_init</code></td><td>Инициализация гейта — держите <b>0.3</b> (линейная зона tanh; 2.0 замораживает гейты).</td></tr>
-      <tr><td><code>enable_self_correction</code></td><td>Таргеты Фазы 2: confirm/correct/refuse.</td></tr>
-    </table>
-    <h3>TrainerConfig</h3>
-    <table>
-      <tr><th>Поле</th><th>Значение</th></tr>
-      <tr><td><code>epochs</code></td><td>Макс. эпох — сходится за ~2; остальное страхует early-stop.</td></tr>
-      <tr><td><code>learning_rate</code></td><td>Базовый LR (2e-4); гейты и token-preferences с <code>gate_lr_multiplier×</code> (5).</td></tr>
-      <tr><td><code>batch_size</code>, <code>grad_accumulation</code></td><td>Эффективный батч = произведение; малый bs + накопление влезает в маленькие GPU.</td></tr>
-      <tr><td><code>pretrain_projectors</code></td><td>Предобучение послойных проб (~1&nbsp;мин CPU) — обязательно для глубоких энкодеров.</td></tr>
-      <tr><td><code>optimizer</code></td><td><code>"adamw"</code> или <code>"adam8bit"</code> (в 4× меньше памяти оптимизатора — 8–12B на 4&nbsp;ГБ).</td></tr>
-      <tr><td><code>early_stop_patience</code></td><td>Остановка после N эпох без улучшения на валидации.</td></tr>
-    </table>
-  </section>
-
-  <section id="training-ru">
-    <h2>Обучение Скептика</h2>
-    <img class="diagram" src="assets/training-ru.svg" alt="Обучение: коллектор + оракул, затем forward/backward сквозь замороженную базу">
-    <img class="diagram" src="assets/caching-ru.svg" alt="Экономия времени кэшированием: collect-кэш, срез, KV-кэш на инференсе">
-    <p>Обучение в две стадии: один раз собрать активации (они кэшируются), затем обучить обвязку.
-      Запустить можно двумя способами — через <b>CLI</b> (рекомендуется) или Python API.</p>
-
-    <h3>CLI — три стадии, один манифест</h3>
-    <p>CLI <code>metaloom</code> разбивает конвейер на <code>collect → train → eval</code>, связанные
-      манифестом <code>run.json</code> (модель · слои · датасет). <code>collect</code> его пишет;
-      <code>train</code>, <code>eval</code>, <code>meta-agent</code> и <code>metadeploy</code> читают
-      через <code>--run-dir</code> — флаги не приходится дублировать.</p>
-<pre>metaloom collect --run-dir runs/my --model-name Qwen/Qwen2.5-0.5B-Instruct \
-                 --dataset mmlu --target-layers late --encoder-type selective --mcq-direct
-metaloom train   --run-dir runs/my --epochs 6
-metaloom eval    --run-dir runs/my</pre>
-    <div class="warn"><b>Thinking-модели → <code>--mcq-direct</code>.</b> Qwen / Gemma-it / Granite
-      открывают <code>&lt;think&gt;</code> и не доходят до ответа за короткий Pass&nbsp;1, поэтому флаг
-      оракула всегда 0, и Скептик схлопывается в вечный отказ. <code>--mcq-direct</code> отключает
-      thinking и просит только букву ответа.</div>
-
-    <h3>Python API</h3>
-<pre><span class="k">from</span> meta_core <span class="k">import</span> Doubter, DoubterConfig
-<span class="k">from</span> meta_loom <span class="k">import</span> ActivationDatasetCollector, Trainer, TrainerConfig
-
-<span class="c"># 1. Сбор активаций (прямой проход Pass-1 + флаг оракула pass1_correct)</span>
-collector = ActivationDatasetCollector(pipe, max_new_tokens=<span class="n">50</span>,
-                                       check_correctness=check_fn)
-samples = collector.collect(questions, ground_truths)
-ActivationDatasetCollector.save(samples, <span class="s">"dataset.pt"</span>)
-
-<span class="c"># 2. Обучение обвязки (база остаётся замороженной)</span>
-doubter = Doubter(DoubterConfig(encoder_type=<span class="s">"selective"</span>))
-pipe.attach(doubter)
-trainer = Trainer(doubter, pipe, TrainerConfig(
-    epochs=<span class="n">10</span>, batch_size=<span class="n">2</span>, grad_accumulation=<span class="n">16</span>,
-    learning_rate=<span class="n">2e-4</span>, gate_lr_multiplier=<span class="n">5.0</span>,
-    pretrain_projectors=<span class="k">True</span>,   <span class="c"># обязательно для selective-энкодера</span>
-))
-trainer.train(train_samples, val_samples=val_samples)
-doubter.save_checkpoint(<span class="s">"doubter.pt"</span>)</pre>
-    <div class="note"><b>Оптимизатор.</b> Пять групп параметров — веса энкодера и CA на базовом LR,
-      гейты и token-preferences с множителем <code>×5</code> (мало параметров, tanh сжимает
-      градиенты). Косинусное расписание, 5% прогрева. Сходится за ~2 эпохи.</div>
-    <div class="warn"><b>Предобучение проб (probe).</b> Глубоким (послойным) энкодерам оно нужно:
-      каждый projector предобучается ~1&nbsp;мин на CPU предсказывать <code>P(correct)</code>. Без
-      этого сеть не сходится.</div>
-
-    <h3>Одна команда: универсальная обвязка <small>(v0.3)</small></h3>
-    <p><code>metaloom build-universal</code> кодифицирует рецепт <b>общей</b> обвязки — один Doubter,
-      обученный на <b>сбалансированном диверс-миксе</b> (commit + hold по всему пространству агентного
-      решения), а не под одну узкую задачу. На held-out суите из 6 осей это единственный арм <b>без
-      провала ни на одной оси</b> (floor худшей оси 0.47, commit сохранён): калиброванный роутер,
-      который отвечает из памяти, зовёт инструмент, уточняет или отказывает.</p>
+  <section id="factory-ru">
+    <h2>Фабрика обвязок (build-universal)</h2>
+    <p>Обвязка, оверфитнутая под одну задачу, переносит осторожность, но <b>пере-воздерживается</b> —
+      проседает там, где надо <i>действовать</i>. Лекарство: обучать на <b>сбалансированном диверс-миксе</b>
+      (commit + hold по всему пространству агентного решения). Рецепт кодифицирован в одну команду — фабрика
+      <b>общей</b> обвязки неуверенности под любую базовую модель.</p>
 <pre>metaloom build-universal --run-dir runs/uni --model-name Qwen/Qwen2.5-14B-Instruct \
                  --quantization nf4 --per-class 70 --epochs 6 \
                  --suite suite.json --eval --export-gguf</pre>
-    <p>Собирает микс (When2Call · PopQA · SQuAD2, модельно-агностично через токенизатор;
-      <code>--suite</code> исключает его вопросы = защита от утечки), гонит <code>collect → train</code>
-      с явными мульти-экшн таргетами, затем опционально <b>per-axis</b> eval (<code>--eval</code> →
-      <code>floor</code> / <code>commit_mean</code>) и GGUF-sidecar (<code>--export-gguf</code>). На
-      выходе — публикуемый <code>run.json</code> + чекпоинт. «Фабрика» обвязок неуверенности под любую базу.</p>
+    <img class="diagram" src="assets/factory-ru.svg" alt="Фабрика: одна команда строит общую обвязку — диверс-микс, collect, train, eval, export; единственный арм без провала оси">
+    <p>Собирает микс (When2Call · PopQA · SQuAD2, модельно-агностично через токенизатор; <code>--suite</code>
+      исключает его вопросы = защита от утечки), гонит <code>collect → train</code> с явными мульти-экшн
+      таргетами, затем опц. <b>per-axis</b> eval (<code>--eval</code> → <code>floor</code> /
+      <code>commit_mean</code>) и GGUF-sidecar (<code>--export-gguf</code>).</p>
+    <div class="note"><b>Результат (Qwen2.5-14B, held-out суит из 6 осей):</b> диверсная обвязка —
+      <b>единственный арм без провала ни на одной оси</b> (floor худшей оси 0.47 vs база 0.13), даже подняла
+      ось tool-call выше всех, сохранив memory у базы. Опубликованный пример:
+      <a href="https://huggingface.co/Imperius/meta-qwen-14b-universal">meta-qwen-14b-universal</a>.</div>
   </section>
 
-  <section id="evaluation-ru">
-    <h2>Оценка и метрики</h2>
-    <img class="diagram" src="assets/metrics-ru.svg" alt="Откуда берутся метрики: 2×2 исходов">
-    <p><code>BaselineComparison</code> гоняет базу против модифицированной на одном бенчмарке и
-      выдаёт <b>честные</b> метрики калибровки со статистическими тестами (McNemar, парный t).</p>
-<pre><span class="k">from</span> meta_loom <span class="k">import</span> BaselineComparison, QABenchmark, BenchmarkTask
+  <!-- ============================ РУКОВОДСТВА ============================ -->
+  <section id="train-ru">
+    <h2>Обучить свою — collect → train → eval</h2>
+    <p>Весь цикл — три стадии CLI <code>metaloom</code>, связанные одним манифестом <code>run.json</code>
+      (модель · слои · датасет). <code>collect</code> его пишет; остальные читают через <code>--run-dir</code>,
+      флаги не перепечатываешь.</p>
+<pre><span class="c"># 1 · collect — прогнать базу, снять активации + флаг оракула</span>
+metaloom collect --run-dir runs/my --model-name Qwen/Qwen2.5-0.5B-Instruct \
+                 --dataset mmlu --target-layers late --encoder-type selective --mcq-direct
 
-bench = QABenchmark(name=<span class="s">"test"</span>, tasks=tasks, scoring=<span class="s">"custom"</span>)
-report = BaselineComparison(pipe, bench, max_tokens=<span class="n">80</span>).run()
-print(report.summary())</pre>
-    <p>Для <b>агентной</b> оценки (многошаговое использование инструментов) <code>AgentComparison</code>
-      гоняет честную петлю база-против-Скептика через <b>Meta-Agent</b> (нативный формат tool-calling,
-      не самодельный ReAct) и выдаёт pass-rate плюс счётчики спасённых/сломанных.</p>
-    <table>
-      <tr><th>Метрика</th><th>Определение</th></tr>
-      <tr><td>Селективная точность</td><td>Из вопросов, на которые модель <i>ответила</i>, доля верных.</td></tr>
-      <tr><td>Доля отказов</td><td>Доля вопросов, на которые модель отказалась отвечать.</td></tr>
-      <tr><td>Точность отказа</td><td>Из отказов — доля <i>оправданных</i>: база ошиблась бы.
-        <b>Считается против оракула</b> (pass1_correct), а не наивным сравнением текста.</td></tr>
-      <tr><td>Доля переотказа</td><td>Из отказов — доля тех, что модель на самом деле знала (цена осторожности).</td></tr>
-    </table>
-    <div class="warn"><b>Оговорка о честности.</b> Точность отказа осмысленна только против оракула
-      базы. Наивная проверка «текст отказа ≠ ответ» почти всегда истинна и раздувает число —
-      избегайте её.</div>
+<span class="c"># 2 · train — только обвязка; база заморожена, Pass-1 не пересчитывается</span>
+metaloom train --run-dir runs/my --epochs 6
+
+<span class="c"># 3 · eval — база vs Doubter на held-out сплите (селективные метрики)</span>
+metaloom eval --run-dir runs/my
+
+<span class="c"># 4 · поговорить — run.json несёт модель+слои+чекпоинт</span>
+meta-agent run --run-dir runs/my "Какая столица Франции?"</pre>
+    <img class="diagram" src="assets/workflow-ru.svg" alt="Весь конвейер: collect, train, eval, затем агент или деплой">
+    <div class="warn"><b>Thinking-модели → <code>--mcq-direct</code>.</b> Qwen / Gemma-it / Granite открывают
+      <code>&lt;think&gt;</code> и не доходят до ответа на коротком Pass&nbsp;1 → флаг оракула 0, Doubter
+      схлопывается в вечный отказ. <code>--mcq-direct</code> выключает thinking и просит только букву.</div>
+    <p>Стоимость двух проходов почти вся кэшируется — collect-once, срез-тренер для низа Pass-2 и KV-кэш на
+      инференсе:</p>
+    <img class="diagram" src="assets/caching-ru.svg" alt="Экономия времени кэшированием: collect-кэш, срез, KV-кэш на инференсе">
+    <p>Весь цикл для моделей 0.5B–8B идёт локально на ноутбуке с 4&nbsp;ГБ VRAM (RTX 3050) через nf4 +
+      срез-тренер. Python-API (<code>ActivationDatasetCollector</code>, <code>Trainer</code>,
+      <code>TrainerConfig</code>) зеркалит CLI для полного контроля.</p>
   </section>
 
   <section id="agent-ru">
     <h2>Агентный рантайм</h2>
-    <p>Запустить обученную обвязку в агентной петле — инструменты, история и калиброванное решение:
-      ответить, что-то найти или отказаться. Рантайм тонкий: добавляет агентный <i>слой</i> (петля,
-      инструменты), а не вторую копию двухпроходного ядра.</p>
-<pre>meta-agent run --run-dir runs/my <span class="s">"What is the capital of France?"</span>
-<span class="c"># читает run.json (модель, слои, чекпойнт) — руками ничего вбивать не надо</span></pre>
-    <h3>Нативный tool-use, а не самодельный ReAct</h3>
-    <p>Живые instruct-модели не держат текстовый протокол «Action: tool[arg]» — дописывают фейковый
-      Observation и не останавливаются. Поэтому промпт строится через собственный
-      <code>apply_chat_template(tools=…)</code> модели, а вывод парсится в её нативном тул-формате
-      (<code>&lt;function=…&gt;</code> / JSON).</p>
-    <table>
-      <tr><th>Часть</th><th>Роль</th></tr>
-      <tr><td><code>MetaAgent</code> · <code>Session</code></td><td>петля + состояние диалога.</td></tr>
-      <tr><td><code>ToolRegistry</code> · <code>Tool</code></td><td>инструменты, которые модель может вызвать.</td></tr>
-      <tr><td><code>NativeToolPrompt</code> / <code>NativeToolRenderer</code></td><td>строит нативный промпт / парсит нативный тул-вызов.</td></tr>
-      <tr><td><code>StopBackend</code></td><td>обрезает по стоп-строкам хода (иначе модель играет обе роли).</td></tr>
-      <tr><td><code>InferenceBackend</code></td><td>шов ниже Policy: <code>MetaSpiderBackend</code> (GPU), <code>LlamaCppBackend</code> (CPU), … каждый лениво тянет свою тяжёлую зависимость.</td></tr>
-    </table>
-    <div class="note"><b>Гоча с thinking — в одном месте.</b> Отключение reasoning несёт <i>оба</i> ключа
-      (<code>enable_thinking</code> + <code>thinking</code>) — у разных семейств он называется
-      по-разному; лишний игнорируется шаблоном.</div>
+    <p>Запуск обвязки в тул-петле. Сигнал неуверенности роутится в <i>действие</i> — ответить / позвать тул
+      / уточнить / отказать — через нативный tool-calling (родной формат токенизатора), не ручной ReAct-текст.</p>
+<pre>meta-agent run --run-dir runs/my "Забронируй рейс в Токио"      <span class="c"># петля с тулами и историей</span>
+meta-agent chat --run-dir runs/my                              <span class="c"># интерактивно</span></pre>
+    <div class="note"><b>Решение, не генерация.</b> Сигнал сильнее всего в короткой точке решения; на длинном
+      выводе тула он гейтится (decide-then-detach) — роутит, не портя генерацию.</div>
   </section>
 
   <section id="deploy-ru">
-    <h2>Деплой в llama.cpp</h2>
-    <p>Обвязка полностью отделима от замороженной базы, поэтому обученный Скептик работает на
-      CPU через llama.cpp — без GPU и PyTorch на инференсе.</p>
-    <ol>
-      <li>Экспортируйте обвязку в <b>GGUF-сайдкар</b> (веса энкодера + cross-attention).</li>
-      <li>База работает как квантованный GGUF (напр. <code>Q4_K_M</code>).</li>
-      <li>Мета-адаптер впрыскивает когнитивные токены на хуке control-vector; двухпроходный
-        драйвер снимает активации, гоняет энкодер, затем генерирует с впрыском.</li>
-      <li>Опциональное <b>динамическое обновление</b> переэнкодирует когнитивные токены во время
-        длинных генераций (по гейту косинусной близости).</li>
-    </ol>
-<pre>metadeploy export --run-dir runs/my            <span class="c"># обвязка → doubter_sidecar.gguf</span>
+    <h2>Деплой в llama.cpp — без GPU</h2>
+    <p>Экспортировать обученную обвязку в <b>GGUF-sidecar</b> + ggml/C++ forward — калиброванный отказ на
+      квантованной базе <b>без CUDA и PyTorch</b> (CPU, Metal, edge).</p>
+<pre>metadeploy export --run-dir runs/my        <span class="c"># → doubter_sidecar.gguf</span>
+<span class="c"># загрузить sidecar в форк llama.cpp; ручка gain — в META_GAIN</span>
+META_GAIN=1.0 llama-meta-generate -m base.gguf --meta doubter_sidecar.gguf -p "…"</pre>
+    <div class="note">Sidecar — только веса обвязки (float32, энкодер + cross-attention + врата) + конфиг в
+      GGUF-метаданных. Калиброванный отказ держится до Q4_K_M. Сборка + патч — в README пакета
+      <code>meta-deploy</code>.</div>
+  </section>
 
-<span class="c"># двухпроходный инференс в форке llama.cpp (CPU, без PyTorch):</span>
-META_SIDECAR=doubter_sidecar.gguf META_LAYERS=16,17,18,19,20,21,22,23 \
-META_PROMPT=<span class="s">"What is the capital of France?"</span> \
-  ./build/bin/llama-meta-generate -m base.Q4_K_M.gguf -c 2048 -t 4</pre>
-    <p>Сборка форка и примера <code>llama-meta-generate</code> — по README пакета
-      <code>meta-deploy</code> (<code>llama_patch/</code> к базе llama.cpp <code>b9619</code>).</p>
-    <div class="note"><b>Робастность.</b> Сигнал самооценки переживает 4-битное сжатие: поведение
-      (отказ / ответ) держится вплоть до <code>Q4_K_M</code> с пренебрежимо малой потерей.</div>
+  <!-- ============================ СПРАВОЧНИК ============================ -->
+  <section id="architecture-ru">
+    <h2>Архитектура: четыре пакета</h2>
+    <img class="diagram" src="assets/packages-ru.svg" alt="Четыре пакета: meta-core как общее ядро + три потребителя">
+    <table>
+      <tr><th>Пакет</th><th>Что делает</th><th>Ключевые классы</th></tr>
+      <tr><td><code>meta-core</code><br><span class="c">инференс</span></td>
+        <td>Двухпроходный механизм: замор. база + обвязка, хуки, когнитивный энкодер, cross-attention с
+          врата́ми, контракт формата чекпоинта. Всё для <i>запуска</i> обученной обвязки. Ни от чего не зависит.</td>
+        <td><code>MetaSpiderPipeline</code>, <code>Doubter</code>, <code>Watchdog</code>,
+          <code>ConfidenceProbe</code>, <code>ActivationCollector</code></td></tr>
+      <tr><td><code>meta-loom</code><br><span class="c">обучение + оценка</span></td>
+        <td>Collect, train (two-pass backprop сквозь замор. базу), честный eval; фабрика диверс-микса.
+          → Core + Agent.</td>
+        <td><code>metaloom</code> CLI, <code>Trainer</code>, <code>build_universal</code>,
+          <code>agentic_mix</code></td></tr>
+      <tr><td><code>meta-agent</code><br><span class="c">агентный рантайм</span></td>
+        <td>Петля агента с тулами и историей; нативный tool-use для instruct-моделей. → Core.</td>
+        <td><code>MetaAgent</code>, <code>Session</code>, <code>NativeToolPrompt</code></td></tr>
+      <tr><td><code>meta-deploy</code><br><span class="c">llama.cpp</span></td>
+        <td>Экспорт в GGUF-sidecar + ggml/C++ forward; запуск без CUDA/PyTorch. → Core.</td>
+        <td><code>metadeploy export</code>, <code>export_sidecar</code></td></tr>
+    </table>
+    <p>Ядро общее для всех; обучение / агентность / деплой — три независимых потребителя. Прод-инференс
+      ставит только <code>meta-core</code>.</p>
   </section>
 
   <section id="api-ru">
     <h2>Справочник API</h2>
     <h3>CLI</h3>
     <ul>
-      <li><code>metaloom collect|train|eval --run-dir &lt;dir&gt;</code> — конвейер обучения; стадии связаны манифестом <code>run.json</code></li>
-      <li><code>meta-agent run --run-dir &lt;dir&gt; "вопрос"</code> — агентный / чат-рантайм (читает манифест)</li>
-      <li><code>metadeploy export --run-dir &lt;dir&gt;</code> — экспорт обвязки в GGUF-сайдкар для llama.cpp</li>
+      <li><code>metaloom collect|train|eval --run-dir &lt;dir&gt;</code> — конвейер обучения; стадии связаны <code>run.json</code></li>
+      <li><code>metaloom build-universal --model-name N</code> — фабрика диверс-микса (общая обвязка)</li>
+      <li><code>meta-agent run|chat --run-dir &lt;dir&gt;</code> — агентный рантайм</li>
+      <li><code>metadeploy export --run-dir &lt;dir&gt;</code> — GGUF-sidecar</li>
     </ul>
-    <h3>Pipeline</h3>
+    <h3>Python (meta-core)</h3>
     <ul>
-      <li><code>MetaSpiderPipeline.from_pretrained(cfg)</code> — загрузка + заморозка базы, инициализация коллектора.</li>
-      <li><code>.attach(modifier)</code> / <code>.detach(modifier)</code> / <code>.detach_all()</code></li>
-      <li><code>.generate(prompt, max_new_tokens=…, dynamic_refresh=False)</code> — двухпроходный инференс.</li>
-    </ul>
-    <h3>Модификатор</h3>
-    <ul>
-      <li><code>Doubter(DoubterConfig)</code> — собрать новую обвязку.</li>
-      <li><code>Doubter.from_checkpoint(path)</code> / <code>.save_checkpoint(path)</code></li>
-    </ul>
-    <h3>Обучение</h3>
-    <ul>
-      <li><code>ActivationDatasetCollector(pipe, …).collect(questions, ground_truths)</code></li>
-      <li><code>Trainer(doubter, pipe, TrainerConfig).train(train, val_samples=…)</code></li>
-    </ul>
-    <h3>Оценка</h3>
-    <ul>
-      <li><code>BaselineComparison(pipe, benchmark).run()</code> → <code>ComparisonReport</code> (селективный QA)</li>
-      <li><code>AgentComparison(pipe, doubter=…, …).run(tasks)</code> → агентная оценка через Meta-Agent</li>
-      <li><code>QABenchmark</code>, <code>BenchmarkTask</code>, <code>AgentTask</code></li>
-      <li><code>harness.classify_action(text)</code> → <code>"confirm" | "correct" | "refuse"</code></li>
+      <li><code>MetaSpiderConfig(model_name, target_layers, cross_attn_layers, dtype, quantization, …)</code></li>
+      <li><code>MetaSpiderPipeline.from_pretrained(cfg)</code> → <code>.attach()</code> / <code>.detach_all()</code> / <code>.generate()</code> / <code>.set_gain()</code></li>
+      <li><code>Doubter.from_checkpoint(path)</code> · <code>.set_gain(x)</code> · <code>.save_checkpoint(path)</code></li>
+      <li><code>Watchdog(ConfidenceProbe)</code> · <code>.score(pipe, prompt).is_uncertain</code></li>
     </ul>
   </section>
 
   <section id="faq-ru">
     <h2>ЧаВо</h2>
-    <h3>Делает ли это модель умнее?</h3>
-    <p>Нет. Знаний не добавляет — выводит наружу уже существующий внутренний сигнал неуверенности,
-      чтобы модель отвечала, когда уверена, и отказывалась, когда нет. Превращает «ответить
-      наугад» в «ответить, когда уверен».</p>
-    <h3>Какие базовые модели поддерживаются?</h3>
-    <p>Любая HF decoder-LM — Llama, Gemma (2/3/4), Qwen, Mistral, GPT-2. Поиск слоёв независим от
-      семейства, включая вложенные мультимодальные конфиги.</p>
-    <h3>Насколько велика обвязка?</h3>
-    <p>~2% от базы (напр. ~188M на 8B-модели). База никогда не обновляется.</p>
-    <h3>Можно ли обучать на маленькой GPU?</h3>
-    <p>Да — используйте <code>quantization="nf4"</code> + <code>gradient_checkpointing=True</code>.
-      Градиенты всё равно текут сквозь замороженную 4-битную базу к обвязке.</p>
-    <h3>Переносится ли обвязка между моделями?</h3>
-    <p>Нет. Она калибрована под распределение активаций одной модели. Если приклеить base-обученного
-      Скептика к instruct-версии (или другой модели), скрытые состояния уйдут в OOD и генерация
-      сломается — нужно переобучить на активациях целевой модели.</p>
-    <h3>Что на очень длинных генерациях?</h3>
-    <p>Сигнал неуверенности может самоусилиться и зациклиться. Включите <b>AGC</b> (см.
-      <a href="#how-it-works-ru">Как это работает</a>), чтобы держать его на setpoint.</p>
+    <h3>Это делает модель умнее?</h3>
+    <p>Нет. Вытаскивает существующий внутренний сигнал неуверенности и превращает «ответить наугад» в
+      «ответить, когда уверен; иначе отказ / поиск / уточнение». Знаний не добавляет.</p>
+    <h3>Почему не просто попросить модель быть неуверенной?</h3>
+    <p>Промпт не достаёт до латентного канала — по замеру текст-промт почти инертен, а обвязка двигает
+      решение в разы. См. <a href="#vs-prompt-ru">сравнение</a>.</p>
+    <h3>Обвязка переносится между моделями?</h3>
+    <p>Нет — калибрована под распределение активаций одной базы; не приклеится к другой модели или даже
+      другому файн-тюну. Используй <a href="#factory-ru">build-universal</a> под каждую модель.</p>
+    <h3>Какой размер обвязки? Можно на маленькой GPU?</h3>
+    <p>~2% от базы. Весь цикл collect→train→eval для 0.5B–8B идёт на 4&nbsp;ГБ ноутбучной GPU через nf4 +
+      срез-тренер.</p>
   </section>
-  </div><!-- /.ru -->
+  </div>
 </main>
 </div>
 
