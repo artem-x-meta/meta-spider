@@ -281,6 +281,23 @@ watch = Watchdog(ConfidenceProbe.load(<span class="s">"probe.pt"</span>))
 <span class="k">if</span> watch.score(pipe, prompt).is_uncertain:
     docs = retrieve(...)   <span class="c"># external action — generation is never modified</span></pre>
     <img class="diagram" src="assets/watchdog-en.svg" alt="Watchdog: reads the cognitive token via a probe and gates an external action without touching generation">
+
+    <h3>Why not just prompt the model to be unsure?</h3>
+    <p>Because the latent channel is not reachable by prompting. In a fair 2×2 (both arms allowed to say
+      "unsure") on <b>Qwen2.5-14B</b>, a text prompt that simply <i>asks</i> the model to be cautious is
+      nearly <b>inert</b>, while the wrapper moves the decision decisively:</p>
+    <div class="grid">
+      <div class="card"><h3>Abstain when there's no tool</h3><p>base 0.27 → text prompt 0.33 →
+        <b>wrapper 0.67</b>.</p></div>
+      <div class="card"><h3>Decline the unanswerable</h3><p>base 0.07 → text prompt <b>0.07 (no movement)</b>
+        → <b>wrapper 0.87</b>.</p></div>
+      <div class="card"><h3>Catch the base's errors (MMLU-Pro)</h3><p>the wrapper flags <b>78%</b> of the
+        questions the base gets wrong; the text prompt, 14%.</p></div>
+    </div>
+    <div class="note"><b>Read it right.</b> Measure the signal through the channel the wrapper was trained
+      to express — it <i>generates</i> a refusal ("I'm not confident enough to answer"), so detect refusal
+      in the generation, not via an artificial "UNSURE" multiple-choice option (that readout makes it look
+      inert). <span class="c">docs/results/qwen-14b/text-vs-latent.md</span></div>
   </section>
 
   <section id="architecture">
@@ -714,6 +731,23 @@ pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># микшерн
       0 → 1.5 плавно крутит отказ; за ~1.5–2.0 положительная ОС инъекции срывается — у потолка сочетать
       статический gain с AGC. Это ручка <b>покрытия</b>, не калибровки: управляет тем, сколько модель
       воздерживается, а не тем, насколько умны воздержания.</div>
+
+    <h3>Зачем обвязка, если можно просто попросить модель быть неуверенной?</h3>
+    <p>Потому что латентный канал недостижим промптингом. В честном 2×2 (обоим армам разрешено сказать
+      «не уверен») на <b>Qwen2.5-14B</b> текст-промт, который просто <i>просит</i> быть осторожнее, почти
+      <b>инертен</b>, а обвязка двигает решение решительно:</p>
+    <div class="grid">
+      <div class="card"><h3>Воздержаться, когда тула нет</h3><p>база 0.27 → текст-промт 0.33 →
+        <b>обвязка 0.67</b>.</p></div>
+      <div class="card"><h3>Отказать на неотвечаемом</h3><p>база 0.07 → текст-промт <b>0.07 (не двигает)</b>
+        → <b>обвязка 0.87</b>.</p></div>
+      <div class="card"><h3>Ловить ошибки базы (MMLU-Pro)</h3><p>обвязка флагает <b>78%</b> вопросов, где
+        база ошибается; текст-промт — 14%.</p></div>
+    </div>
+    <div class="note"><b>Читать правильно.</b> Мерить сигнал тем каналом, в который обвязка обучена
+      выражаться — она <i>генерит</i> фразу-отказ («I'm not confident enough to answer»), поэтому детект
+      отказа по генерации, а не искусственной «UNSURE»-опцией MCQ (такой ридаут показывает её инертной).
+      <span class="c">docs/results/qwen-14b/text-vs-latent.md</span></div>
   </section>
 
   <section id="architecture-ru">
