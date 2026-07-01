@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `REFUSAL_PHRASES` now include the factory mix's trained refusal target (`agentic_mix.REFUSE`:
+  "don't have enough information", "can't/cannot provide") — the detector previously missed the
+  diverse wrapper's OWN refusals (caught by eye in saved generations; offline regrade confirmed).
+
 ## v0.3.1 — arbiter-audit fixes (correctness + honest-metrics hardening)
 
 An external-arbiter audit of the whole framework; every confirmed finding fixed.

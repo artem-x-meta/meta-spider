@@ -39,6 +39,12 @@ REFUSAL_PHRASES = (
     "i'm unsure",
     "unable to",
     "i don't know",
+    # the factory mix's trained refusal target (agentic_mix.REFUSE) — without these the
+    # detector missed the diverse wrapper's OWN refusals (caught by eye in saved gens):
+    "don't have enough information",
+    "do not have enough information",
+    "can't provide",
+    "cannot provide",
 )
 
 # Tightened (v0.3.1): the old list ("actually", "wait", "let me think") fired on ordinary
