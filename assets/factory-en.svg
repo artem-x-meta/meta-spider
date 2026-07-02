@@ -72,5 +72,5 @@
     <text x="700" y="500" fill="#f0b86e" font-weight="700">diverse (factory)</text>
     <rect x="600" y="474" width="200" height="13" rx="3" fill="#3a4456"/><rect x="600" y="474" width="93" height="13" rx="3" fill="#7fcf8f"/><text x="700" y="468" fill="#7fcf8f" font-weight="700">floor 0.47</text>
   </g>
-  <text x="40" y="380" fill="#9aa3b2" font-size="10.5">lifts hold axes (unknown 0.13→0.93) without collapsing commit — even raises "call" above every other arm (0.40→0.47).</text>
+  <text x="40" y="380" fill="#9aa3b2" font-size="10.5">lifts hold axes (unknown 0.13→0.87, v0.3.1 re-measure) without collapsing commit — even raises "call" above every other arm (0.40→0.47).</text>
 </svg>
