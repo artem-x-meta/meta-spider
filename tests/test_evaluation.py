@@ -29,6 +29,16 @@ def test_classify_action_refuse():
     assert classify_action("Sorry, I don't know.") == "refuse"
 
 
+def test_classify_action_opening_rule():
+    """Refusal counts only in the OPENING sentence: an answer followed by trailing doubt is a
+    commit (pre-EOS-fix checkpoints ramble doubt phrases after answering — v0.3.1 re-measure)."""
+    assert classify_action("F. 200 m/s. I'm not confident enough to answer.") == "confirm"
+    assert classify_action("Rollo signed the treaty. I'm not sure though.") == "confirm"
+    assert classify_action("I don't have enough information to answer that reliably.") == "refuse"
+    # no sentence terminator at all — the whole text is the opening
+    assert classify_action("not sure") == "refuse"
+
+
 def test_classify_action_correct():
     # v0.3.1: CORRECTION_PHRASES tightened to the TRAINED template ("Wait, the correct…") —
     # bare "actually"/"wait"/"let me think" fired on ordinary speech/CoT and inflated the

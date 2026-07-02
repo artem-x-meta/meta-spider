@@ -12,13 +12,14 @@ Meta-Spider-specific metrics (per the article):
     "of the originally wrong, what fraction is 'rescued'"
 
 Model action classification (by text):
-  - "refuse"  — "not sure", "don't know", "cannot answer"
-  - "correct" — "wait", "actually", "reconsider", "correction"
-  - "confirm" — otherwise (just answered)
+  - "refuse"  — a refusal phrase in the OPENING sentence ("not sure", "don't know", …)
+  - "correct" — a trained correction template anywhere ("wait, the correct …")
+  - "confirm" — otherwise (just answered; trailing doubt after an answer is still a commit)
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Literal, Optional
 
@@ -58,10 +59,24 @@ CORRECTION_PHRASES = (
 )
 
 
+def _opening(text: str) -> str:
+    """The first sentence (up to the first `.`/`!`/`?`/newline) — where a trained refusal opens."""
+    m = re.search(r"[.!?\n]", text)
+    return text if m is None else text[: m.end()]
+
+
 def classify_action(answer: str) -> ActionType:
-    """Determine which action the model chose from its text."""
-    a = answer.lower()
-    if any(p in a for p in REFUSAL_PHRASES):
+    """Determine which action the model chose from its text.
+
+    Refusal is only counted when a refusal phrase appears in the OPENING sentence: a wrapper
+    trained on the refusal template opens with it, while an ANSWER followed by trailing doubt
+    ("F. 200 m/s … I'm not confident") is a commit, not a refusal. Phrase-anywhere matching
+    inflated refusal rates on pre-EOS-fix checkpoints that ramble doubt phrases after answering
+    (caught in the v0.3.1 re-measure generations). Corrections stay phrase-anywhere by design —
+    the trained template (" Wait, the correct answer is …") follows a first answer mid-text.
+    """
+    a = answer.lower().strip()
+    if any(p in _opening(a) for p in REFUSAL_PHRASES):
         return "refuse"
     if any(p in a for p in CORRECTION_PHRASES):
         return "correct"

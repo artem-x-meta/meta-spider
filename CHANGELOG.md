@@ -7,6 +7,13 @@
 - `REFUSAL_PHRASES` now include the factory mix's trained refusal target (`agentic_mix.REFUSE`:
   "don't have enough information", "can't/cannot provide") — the detector previously missed the
   diverse wrapper's OWN refusals (caught by eye in saved generations; offline regrade confirmed).
+- **Refusal detection is now commit-first (opening-sentence rule).** `harness.classify_action`
+  and `meta_agent.action.looks_like_refusal` count a refusal only when the phrase appears in the
+  OPENING sentence; an answer followed by trailing doubt ("F. 200 m/s … I'm not confident") is a
+  commit. Phrase-anywhere matching inflated refusal rates on pre-EOS-fix checkpoints that ramble
+  doubt phrases after answering (caught by eye in the v0.3.1 re-measure generations: 12/12
+  "refusals" on the memory axis were actually answered). Corrections stay phrase-anywhere by
+  design (the trained template follows a first answer mid-text).
 
 ## v0.3.1 — arbiter-audit fixes (correctness + honest-metrics hardening)
 

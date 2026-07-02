@@ -62,8 +62,12 @@ REFUSAL_PHRASES = (
 
 
 def looks_like_refusal(text: str) -> bool:
-    a = (text or "").lower()
-    return any(p in a for p in REFUSAL_PHRASES)
+    # Opening-sentence rule (mirrors harness.classify_action): an answer followed by trailing
+    # doubt is a commit, not a refusal — phrase-anywhere inflated refusal counts.
+    a = (text or "").lower().strip()
+    m = re.search(r"[.!?\n]", a)
+    opening = a if m is None else a[: m.end()]
+    return any(p in opening for p in REFUSAL_PHRASES)
 
 
 class RefusalToolRenderer:
