@@ -61,7 +61,7 @@
 
   <!-- ===== результат ===== -->
   <text x="40" y="350" fill="#cfd6e2" font-size="12.5" font-weight="700">Результат на held-out суите из 6 осей (Qwen2.5-14B): единственный арм без провала</text>
-  <text x="40" y="380" fill="#9aa3b2" font-size="10.5">поднимает hold-оси (unknown 0.13→0.93) без обвала commit — и вытягивает «call» выше всех (0.40→0.47).</text>
+  <text x="40" y="380" fill="#9aa3b2" font-size="10.5">поднимает hold-оси (unknown 0.13→0.87, пере-замер v0.3.1) без обвала commit — и вытягивает «call» выше всех (0.40→0.47).</text>
   <g font-size="10" text-anchor="middle">
     <text x="120" y="500" fill="#9aa3b2">база</text>
     <rect x="92" y="474" width="56" height="13" rx="3" fill="#3a4456"/><rect x="92" y="474" width="7" height="13" rx="3" fill="#d9776c"/><text x="120" y="468" fill="#9aa3b2">0.13</text>

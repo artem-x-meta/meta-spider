@@ -338,20 +338,22 @@ pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># the mixing con
   </section>
 
   <section id="watchdog">
-    <h2>The Watchdog — a read-only sensor</h2>
-    <p>The same signal can be used <b>without</b> injecting anything. The <code>Watchdog</code> reads the
-      cognitive token through a linear <code>ConfidenceProbe</code> and returns a verdict, so you gate an
-      <b>external</b> action — retrieve, clarify, escalate — while <b>generation stays untouched</b>.</p>
+    <h2>The Watchdog — an uncertainty sensor that gates strong actions</h2>
+    <p>Injection modulates the <i>decision</i>, not generation — held on over a long (code) output it
+      accumulates off-task drift and corrupts it. The <code>Watchdog</code> fixes that: it reads the
+      cognitive token through a linear <code>ConfidenceProbe</code> at the decision point and <b>gates</b>
+      the strong stuff — <b>pointwise injection into the decision window</b> (the headline mode), or an
+      <b>external</b> action — retrieve, clarify, escalate — with no injection at all (the read-only mode).</p>
 <pre><span class="k">from</span> meta_core <span class="k">import</span> Watchdog, ConfidenceProbe
 watch = Watchdog(ConfidenceProbe.load(<span class="s">"probe.pt"</span>))
 <span class="k">if</span> watch.score(pipe, prompt).is_uncertain:
-    docs = retrieve(...)   <span class="c"># external action — generation is never modified</span></pre>
-    <img class="diagram" src="assets/watchdog-en.svg" alt="Watchdog: reads the cognitive token via a probe and gates an external action without touching generation">
-    <div class="note"><b>Why read-only?</b> Injection is a modulator of the <i>decision</i>, not of
-      generation — held on over a long output it accumulates off-task drift. On an agentic task (ODEX,
-      base solves 7/15): constant injection <b>−3</b>; the Watchdog and point-injection (inject only in
-      the decision window) both <b>+1 with zero losses</b>. The probe on the cognitive token beats a probe
-      on the raw activation (AUC 0.715 vs 0.63) — the encoder adds value.</div>
+    pipe.set_gain(1.5)   <span class="c"># decision window only; after the tool_call → set_gain(0), code stays clean</span></pre>
+    <img class="diagram" src="assets/watchdog-en.svg" alt="Watchdog: reads the cognitive token via a probe and gates pointwise injection or an external action">
+    <div class="note"><b>Why gate?</b> On an agentic coding task (ODEX, base solves 7/15): constant
+      injection <b>−3</b> — the noise compounds over long output; point-injection gated to the decision
+      window <b>+1 with zero losses</b> — injection rehabilitated; the read-only external lookup also
+      <b>+1 with zero losses</b>. The probe on the cognitive token beats a probe on the raw activation
+      (AUC 0.715 vs 0.63) — the encoder adds value.</div>
   </section>
 
   <section id="factory">
@@ -668,18 +670,20 @@ pipe.set_gain(<span class="n">0.8</span>)       <span class="c"># микшерн
   </section>
 
   <section id="watchdog-ru">
-    <h2>Сторож — датчик «только чтение»</h2>
-    <p>Тот же сигнал можно использовать <b>без</b> инъекции. <code>Watchdog</code> читает когнитивный токен
-      линейной <code>ConfidenceProbe</code> и отдаёт вердикт — вы гейтите <b>внешнее</b> действие (поиск,
-      уточнение, эскалация), а <b>генерация не тронута</b>.</p>
+    <h2>Сторож — датчик неуверенности, который гейтит сильные действия</h2>
+    <p>Инъекция — модулятор <i>решения</i>, не генерации: включённая на длинном (кодовом) выводе, она
+      копит off-task дрейф и портит его. <code>Watchdog</code> это чинит: читает когнитивный токен линейной
+      <code>ConfidenceProbe</code> в точке решения и <b>гейтит</b> сильные средства — <b>точечную инъекцию
+      в окно решения</b> (главный режим) или <b>внешнее</b> действие (поиск, уточнение, эскалация) вовсе
+      без инъекции (режим «только чтение»).</p>
 <pre><span class="k">from</span> meta_core <span class="k">import</span> Watchdog, ConfidenceProbe
 watch = Watchdog(ConfidenceProbe.load(<span class="s">"probe.pt"</span>))
 <span class="k">if</span> watch.score(pipe, prompt).is_uncertain:
-    docs = retrieve(...)   <span class="c"># внешнее действие — генерация не изменяется</span></pre>
-    <img class="diagram" src="assets/watchdog-ru.svg" alt="Сторож: читает когнитивный токен пробой и гейтит внешнее действие, не трогая генерацию">
-    <div class="note"><b>Почему только чтение?</b> Инъекция — модулятор <i>решения</i>, не генерации: держа
-      её на длинном выводе, копится off-task дрейф. На агентной задаче (ODEX, база решает 7/15): постоянная
-      инъекция <b>−3</b>; Сторож и точечная инъекция (впрыск только в окне решения) — оба <b>+1 без потерь</b>.
+    pipe.set_gain(1.5)   <span class="c"># только на окно решения; после tool_call → set_gain(0), код чистый</span></pre>
+    <img class="diagram" src="assets/watchdog-ru.svg" alt="Сторож: читает когнитивный токен пробой и гейтит точечную инъекцию или внешнее действие">
+    <div class="note"><b>Почему гейтить?</b> На агентной кодовой задаче (ODEX, база решает 7/15): постоянная
+      инъекция <b>−3</b> — шум компаундится на длинном выводе; точечная инъекция в окне решения — <b>+1 без
+      потерь</b>, инъекция реабилитирована; read-only внешний поиск — тоже <b>+1 без потерь</b>.
       Проба на когнитивном токене бьёт пробу на сырой активации (AUC 0.715 vs 0.63) — энкодер добавляет ценность.</div>
   </section>
 
