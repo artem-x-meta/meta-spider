@@ -1,7 +1,8 @@
 """Meta-Spider Framework configuration.
 
-A single model-agnostic dataclass `MetaSpiderConfig` plus the modifier sub-config
-(`DoubterConfig`). Parameter sources:
+A single model-agnostic dataclass `MetaSpiderConfig` — the MECHANISM config (base model,
+layers, dtype/quantization). Voice-specific configs (DoubterConfig) live in
+`meta_daimon.config` (the Meta-Daimon leg). Parameter sources:
   - publish/github/src/phase1_selective_llama8b/config_selective.py (Phase 1 Selective)
   - publish/github/src/phase2_selective_llama8b/config_p2.py (Phase 2 Selective)
   - publish/github/src/phase8_transformer_encoder_llama1b/config_p8_1b.py (Phase 8 transformer)
@@ -12,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, Optional, Union
 
-__all__ = ["MetaSpiderConfig", "DoubterConfig"]
+__all__ = ["MetaSpiderConfig", "EncoderType"]
 
 
 EncoderType = Literal["selective", "transformer", "multi_token"]
@@ -172,46 +173,3 @@ class MetaSpiderConfig:
                 f"slice-trainer: read layers {bad} above cut={cut} (lowest CA={cut + 1}). "
                 "Use target_layers='late_slice' or explicit read layers ≤ lowest CA−1.")
         return cut
-
-
-@dataclass
-class DoubterConfig:
-    """Config for the Doubter modifier — cognitive-token pipeline.
-
-    Two-pass forward through a frozen base + trainable wrapper (encoder +
-    32 BottleneckCrossAttention). Calibration is achieved **through training** (target =
-    confirm / correct / refuse in Phase 2), not via a post-hoc threshold.
-
-    Defaults — from Phase 2 Selective Llama-8B (record selective accuracy 89.1%).
-    """
-
-    encoder_type: EncoderType = "selective"
-    encoder_bottleneck: int = 256
-    encoder_gate_init: float = 0.3
-    encoder_gate_lr_multiplier: float = 5.0
-
-    # Only for encoder_type="transformer" (the Phase 8 variant)
-    transformer_encoder_dim: int = 384
-    transformer_num_blocks: int = 2
-    transformer_num_heads: int = 8
-    transformer_ffn_expansion: int = 4
-    transformer_dropout: float = 0.1
-
-    # Cross-attention injection
-    num_cognitive_tokens: int = 32  # = base's num_layers for the selective convention
-    ca_bottleneck_dim: int = 256
-    ca_num_heads: int = 4
-    ca_dropout: float = 0.1
-    ca_gate_init: float = 0.3
-    ca_gate_lr_multiplier: float = 5.0
-    token_preference_init: float = 0.0
-    token_preference_lr_multiplier: float = 5.0
-
-    # Phase 2 self-correction target (optional)
-    correction_ratio: float = 0.5
-    enable_self_correction: bool = True
-
-    # Tokenization (Phase 5 finding: concat_last_mean = +1pp sel_acc)
-    pool: Literal["last", "mean", "concat_last_mean"] = "last"
-
-

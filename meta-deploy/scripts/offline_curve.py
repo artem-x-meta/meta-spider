@@ -62,7 +62,7 @@ def load_gguf_acts(results: Path, quant: str, n: int, n_layers: int, hidden: int
 
 def build_encoder(checkpoint: str, hidden: int):
     """Load MultiTokenEncoder from a checkpoint (no base — encoder forward only)."""
-    from meta_core import Doubter
+    from meta_daimon import Doubter
 
     doubter = Doubter.from_checkpoint(checkpoint)
     cfg = doubter.config
@@ -164,7 +164,8 @@ def run_behavioral(args, meta, results: Path):
     Cognitive tokens — from GGUF-extracted activations → buffer → Pass-2 generate.
     Correctness — over all aliases (check_answer_correctness), refusal — classify_action.
     """
-    from meta_core import Doubter, MetaSpiderConfig, MetaSpiderPipeline
+    from meta_core import MetaSpiderConfig, MetaSpiderPipeline
+    from meta_daimon import Doubter
     from meta_loom.evaluation.harness import classify_action
     from meta_loom.data.dataset import check_answer_correctness
 

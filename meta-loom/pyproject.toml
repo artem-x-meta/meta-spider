@@ -21,6 +21,7 @@ classifiers = [
 # Loom builds on top of the core. Heavy train/eval deps are optional.
 dependencies = [
     "meta-core",
+    "meta-daimon",
     "meta-agent",
     "numpy>=1.24",
 ]

@@ -14,7 +14,7 @@ Usage:
     --exe /c/Users/Impi/llamacpp-build/build/bin/llama-meta-generate.exe \
     --gguf /c/Users/Impi/llamacpp-build/_gguf/gemma2b-Q4_K_M.gguf \
     --sidecar <doubter_sidecar.gguf> --checkpoint <doubter.pt> \
-    --framework-path meta-spider-framework --loader-path publish/github
+    --framework-path meta-spider-framework-dev --loader-path publish/github
 """
 
 import argparse, os, subprocess, sys, math
@@ -96,7 +96,8 @@ def main():
 
     # --- PyTorch nf4 ---
     print("PyTorch pipeline...", flush=True)
-    from meta_core import Doubter, MetaSpiderConfig, MetaSpiderPipeline
+    from meta_core import MetaSpiderConfig, MetaSpiderPipeline
+    from meta_daimon import Doubter
     cfg = MetaSpiderConfig(model_name="google/gemma-2-2b-it", device=args.device, dtype="float16",
                            quantization=args.quantization, target_layers=[10,14,18,22,25],
                            cross_attn_layers=[6,12,18,24])

@@ -30,8 +30,10 @@ __version__ = "0.0.1"
 # composed into a single public API (top-level names are the same — backward compatibility).
 # (Meta-Agent is a separate package meta_agent: agents + chat, depends on Meta-Core, not from here.)
 from meta_core import *   # noqa: F401,F403
+from meta_daimon import *  # noqa: F401,F403
 from meta_loom import *   # noqa: F401,F403
 from meta_core import __all__ as _core_all
+from meta_daimon import __all__ as _daimon_all
 from meta_loom import __all__ as _loom_all
 
-__all__ = ["__version__", *_core_all, *_loom_all]
+__all__ = ["__version__", *_core_all, *_daimon_all, *_loom_all]

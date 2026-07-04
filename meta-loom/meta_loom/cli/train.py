@@ -40,7 +40,8 @@ def train_stage(
       (target_text, label) per sample from its ground_truth spec instead of the QA selective path.
     init_from — start from an existing Doubter checkpoint (e.g. continue a QA wrapper into agentic).
     """
-    from meta_core import Doubter, DoubterConfig, MetaSpiderPipeline
+    from meta_core import MetaSpiderPipeline
+    from meta_daimon import Doubter, DoubterConfig
     from meta_loom import ActivationDatasetCollector, Trainer, TrainerConfig
 
     rd = Path(run_dir)

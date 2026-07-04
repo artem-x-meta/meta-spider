@@ -146,7 +146,7 @@ def build_universal_stage(
 
     # 7) optional per-axis eval on the held-out suite (base vs the trained wrapper)
     if eval_suite and suite_path:
-        from meta_core import Doubter
+        from meta_daimon import Doubter
         from meta_loom.evaluation.agentic_suite import compare_base_vs_doubter
         suite = json.loads(Path(suite_path).read_text(encoding="utf-8"))
         d = Doubter.from_checkpoint(str(ckpt))

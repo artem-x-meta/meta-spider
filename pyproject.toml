@@ -28,6 +28,7 @@ classifiers = [
 # top-level API `from meta_spider import ...`). The real code lives in the meta-core / meta-loom packages.
 dependencies = [
     "meta-core",
+    "meta-daimon",
     "meta-loom",
 ]
 

@@ -42,7 +42,7 @@ from meta_loom.training.losses import (
 )
 
 if TYPE_CHECKING:
-    from meta_core.modifiers.doubter import Doubter
+    from meta_daimon import Doubter
     from meta_core.pipeline import MetaSpiderPipeline
 
 __all__ = ["Trainer", "TrainerConfig"]

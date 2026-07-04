@@ -27,7 +27,8 @@ def eval_stage(
     verbose: bool = True,
 ):
     """Run BaselineComparison on the test split → <run-dir>/report.json. Returns the report."""
-    from meta_core import Doubter, MetaSpiderPipeline
+    from meta_core import MetaSpiderPipeline
+    from meta_daimon import Doubter
     from meta_loom import BaselineComparison, BenchmarkTask, QABenchmark
 
     rd = Path(run_dir)

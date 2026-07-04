@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+- **Package split: the Meta-Daimon leg is now its own package.** `meta-core` keeps the
+  abstract meta-attention MECHANISM (pipeline, hooks, encoders, gated CA, the `Modifier`
+  contract, watchdog probe, checkpoint contract); the concrete injection modifiers — the
+  VOICES (currently Doubter + `DoubterConfig`) — moved to the new `meta-daimon` package
+  (named after the Socratic daimonion: counsels, doesn't rule). Back-compat:
+  `from meta_core import Doubter` / `meta_core.modifiers.Doubter` are lazily forwarded to
+  `meta_daimon` (PEP 562); the `meta_spider` umbrella re-exports everything. Install order:
+  core -> daimon -> agent -> loom. Checkpoints unaffected (configs are saved as plain dicts).
+
 ### Fixed
 
 - `check_gsm8k_answer` no longer misparses phrasal answers: the number regex captured a

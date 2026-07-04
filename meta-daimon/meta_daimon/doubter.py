@@ -28,7 +28,7 @@ import torch
 import torch.nn as nn
 
 from meta_core.buffer import ReflexionBuffer
-from meta_core.config import DoubterConfig
+from meta_daimon.config import DoubterConfig
 from meta_core.cross_attention import BottleneckCrossAttention
 from meta_core.encoders.base import Encoder
 from meta_core.encoders.multi_token import MultiTokenEncoder

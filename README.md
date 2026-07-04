@@ -32,19 +32,20 @@ the model answers far more reliably on what it chooses to answer (see the honest
   wrapper for any base from a balanced diverse mix — on a 6-axis agentic suite the only variant with no
   axis collapse. (`docs/results/qwen-14b/diverse-train-balanced.md`)
 
-## Structure: Meta-Core + Meta-Loom + Meta-Agent + Meta-Deploy
+## Structure: Meta-Core + Meta-Daimon + Meta-Loom + Meta-Agent + Meta-Deploy
 
-Four pip packages, each in its own folder under `meta-spider-framework/` (its own pyproject):
+Five pip packages, each in its own folder under `meta-spider-framework/` (its own pyproject):
 
 | Component | What | Import |
 |-----------|------|--------|
-| **Meta-Core** | inference primitives: pipeline (two-pass), hooks, cross-attention, encoders, modifiers, checkpoint contract | `from meta_core import ...` (pip: `meta-core`) |
+| **Meta-Core** | the meta-attention MECHANISM: pipeline (two-pass), hooks, cross-attention, encoders, the `Modifier` contract, checkpoint contract | `from meta_core import ...` (pip: `meta-core`) |
+| **Meta-Daimon** | the VOICES — injection modifiers (Doubter; Socratic daimonion: counsels, doesn't rule); each voice has its own runtime `gain` fader | `from meta_daimon import ...` (pip: `meta-daimon`) |
 | **Meta-Loom** | training + eval: Trainer, collector, losses; BaselineComparison (QA selective) + **AgentComparison** (agentic) | `from meta_loom import ...` (pip: `meta-loom`) |
 | **Meta-Agent** | agentic runtime + chat: MetaAgent, Session, native tool format, backends | `from meta_agent import ...` (pip: `meta-agent`) |
 | **Meta-Deploy** | llama.cpp deploy: export the wrapper to a GGUF sidecar + ggml/C++ forward (CPU/Metal/edge) — `train in PyTorch → deploy in llama.cpp` | `from meta_deploy import ...` / `metadeploy` (pip: `meta-deploy`) |
 
-**Dependency graph:** `Meta-Core` is the pure core (depends on nothing), production inference installs
-only it. `Meta-Agent` → Core. `Meta-Loom` → Core **+ Agent** (the `AgentComparison` agentic eval runs
+**Dependency graph:** `Meta-Core` is the pure mechanism (depends on nothing). `Meta-Daimon` → Core;
+production inference installs core + daimon. `Meta-Agent` → Core. `Meta-Loom` → Core **+ Daimon + Agent** (the `AgentComparison` agentic eval runs
 the Meta-Agent runtime). `Meta-Deploy` → Core (reads the checkpoint contract; the export side is light —
 numpy+gguf, the C++ ggml forward builds separately). `from meta_spider import ...` is a thin umbrella
 **compat shim** that re-exports the public Core+Loom API (backward-compat top-level names).
@@ -78,7 +79,7 @@ And the tooling around it:
 git clone https://codeberg.org/imperius/meta-spider
 cd meta-spider
 # editable packages (Loom pulls Core+Agent); production inference — only meta-core:
-pip install -e meta-core -e meta-agent -e meta-loom
+pip install -e meta-core -e meta-daimon -e meta-agent -e meta-loom
 # optional llama.cpp deploy (GGUF sidecar export):
 pip install -e meta-deploy
 # optional umbrella shim for `from meta_spider import ...`:
