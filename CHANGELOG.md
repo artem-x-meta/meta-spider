@@ -4,6 +4,10 @@
 
 ### Fixed
 
+- `check_gsm8k_answer` no longer misparses phrasal answers: the number regex captured a
+  sentence-ending period ("The answer is 5." -> "5." != "5") and a lone comma matched as
+  a "number" — both silently deflated the oracle. Now `-?\d[\d,]*(?:\.\d+)?` (+ trailing-dot
+  strip in the `####` branch). Found by a second agent instance working on the publish tree.
 - `REFUSAL_PHRASES` now include the factory mix's trained refusal target (`agentic_mix.REFUSE`:
   "don't have enough information", "can't/cannot provide") — the detector previously missed the
   diverse wrapper's OWN refusals (caught by eye in saved generations; offline regrade confirmed).

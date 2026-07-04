@@ -134,8 +134,11 @@ def check_gsm8k_answer(generated: str, ground_truth) -> bool:
 
     match = re.search(r"####\s*(.+)", generated)
     if match:
-        return match.group(1).strip().replace(",", "") in gt_list
-    numbers = re.findall(r"-?[\d,]+\.?\d*", generated)
+        return match.group(1).strip().replace(",", "").rstrip(".") in gt_list
+    # десятичная часть только с цифрами и старт с цифры: `\.?\d*` захватывал точку КОНЦА
+    # ПРЕДЛОЖЕНИЯ («The answer is 5.» → «5.» ≠ «5»), а `[\d,]+` матчил одинокую запятую —
+    # оба дефекта молча занижали оракул на фразовых ответах
+    numbers = re.findall(r"-?\d[\d,]*(?:\.\d+)?", generated)
     if numbers:
         return numbers[-1].replace(",", "") in gt_list
     return False

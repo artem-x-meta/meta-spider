@@ -202,3 +202,15 @@ def test_abstain_affordance_suffix():
     # the wording must trip the refusal detector
     from meta_loom.evaluation.harness import REFUSAL_PHRASES
     assert any(p in ABSTAIN_AFFORDANCE_SUFFIX.lower() for p in REFUSAL_PHRASES)
+
+
+def test_check_gsm8k_answer_sentence_period():
+    """Регекс чисел не должен захватывать точку конца предложения (находка второго Fable:
+    «The answer is 5.» парсился как «5.» и молча занижал оракул на фразовых ответах)."""
+    from meta_loom.data.dataset import check_gsm8k_answer
+    assert check_gsm8k_answer("The answer is 5.", "5")
+    assert check_gsm8k_answer("So the total is 1,234.", "1234")
+    assert check_gsm8k_answer("It equals 3.14, done.", "3.14")     # честная десятичная жива
+    assert check_gsm8k_answer("Balance: -7.", "-7")
+    assert check_gsm8k_answer("#### 42.", "42")                     # страховка и в ####-ветке
+    assert not check_gsm8k_answer("The answer is 6.", "5")
