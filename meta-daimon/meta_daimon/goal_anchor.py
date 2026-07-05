@@ -224,23 +224,21 @@ class GoalAnchor(Modifier):
         from meta_core.model_utils import find_decoder_layers
         layers = find_decoder_layers(pipeline.model)
 
-        # Decision hook: on trigger_decision_layer capture the last hidden → _step_fire.
-        # The verdict applies to CA layers ABOVE the decision layer in the SAME forward and
-        # to all layers of the NEXT step (1-step lag below — acceptable at K_min ≥ 50).
-        dec = self.config.trigger_decision_layer
-        if dec >= len(layers):
-            raise ValueError(f"trigger_decision_layer {dec} out of range "
-                             f"(the model has {len(layers)} layers)")
+        # Decision hook: only needed when a TRIGGER is present (fixed/learnable) — it reads the
+        # last hidden at trigger_decision_layer to advance/query the trigger. always / agent_step
+        # (trigger is None) don't use it: `always` keeps _step_fire=True (set in on_pre_forward),
+        # `agent_step` is armed by the MetaAgent step hooks. So the decision-layer range check
+        # applies only to triggered modes — an always-anchor works on a model of any depth.
+        if self.trigger is not None:
+            dec = self.config.trigger_decision_layer
+            if dec >= len(layers):
+                raise ValueError(f"trigger_decision_layer {dec} out of range "
+                                 f"(the model has {len(layers)} layers)")
 
-        def decision_hook(module, inp, output):
-            if self.trigger is None:
-                # agent_step: keep whatever the step hooks armed; always-on: force True
-                if not self._agent_step_mode:
-                    self._step_fire = True
-                return
-            hs = output[0] if isinstance(output, tuple) else output
-            self._step_fire = bool(self.trigger.decide(hs[:, -1, :].detach()[0]))
-        self._ca_hook_handles.append(layers[dec].register_forward_hook(decision_hook))
+            def decision_hook(module, inp, output):
+                hs = output[0] if isinstance(output, tuple) else output
+                self._step_fire = bool(self.trigger.decide(hs[:, -1, :].detach()[0]))
+            self._ca_hook_handles.append(layers[dec].register_forward_hook(decision_hook))
 
         # CA hooks: inject only when the anchor is set AND the trigger fired this step.
         buffer = self.buffer

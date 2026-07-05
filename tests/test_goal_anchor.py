@@ -87,10 +87,21 @@ def test_trigger_gates_injection(fake_lm_factory):
 
 def test_decision_layer_out_of_range_raises(fake_lm_factory):
     pipe = _fake_pipe(fake_lm_factory)          # 4 layers
-    a = _mini_anchor()
+    # the decision-layer check applies only to TRIGGERED modes (they read that layer's hidden);
+    # always / agent_step don't install the decision hook, so they work on any model depth.
+    a = _mini_anchor(trigger="fixed")
     a.config.trigger_decision_layer = 99
     with pytest.raises(ValueError, match="out of range"):
         pipe.attach(a)
+
+
+def test_always_anchor_ignores_decision_layer_depth(fake_lm_factory):
+    """An always-on anchor must attach even if trigger_decision_layer exceeds the model depth."""
+    pipe = _fake_pipe(fake_lm_factory)          # 4 layers
+    a = _mini_anchor(trigger="always")
+    a.config.trigger_decision_layer = 99        # irrelevant for always
+    pipe.attach(a)                               # must NOT raise
+    assert a in pipe.modifiers
 
 
 # ───────────────────────── checkpoint contract ─────────────────────────

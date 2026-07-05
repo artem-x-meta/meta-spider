@@ -10,6 +10,11 @@
   **transfer without quality loss** on unseen constraint families (a narrow anchor cost −19pp).
   Anchor on HF: `Imperius/meta-qwen-14b-goalanchor`. Data pipeline in `meta_loom.data`
   (`code_spec_sessions`, `drift_sessions`).
+- **`metaloom build-anchor` — the GoalAnchor factory.** Mirrors `build-universal` for the
+  behavior modifier: mine self-distilled pairs over constraint families → train a GoalAnchor
+  → save (+ optional GGUF). `slice_train` optional (default on: fits a 14B anchor on a small
+  GPU; off = full two-pass Trainer). Also a core fix: the anchor's decision hook installs only
+  for triggered modes, so an always-anchor attaches on a model of any depth.
 - **GGUF export for GoalAnchor** (`meta_deploy.export_anchor_sidecar`; `metadeploy export` autodetects
   `kind=goal_anchor`). Sidecar carries `meta_spider.kind` + trigger metadata (trigger / trigger_k /
   decision_layer). NB: the C++ llama.cpp runtime for the anchor's lifecycle (static anchor +

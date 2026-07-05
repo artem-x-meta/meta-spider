@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import sys
 
+from meta_loom.cli import build_anchor as _build_anchor
 from meta_loom.cli import build_universal as _build_universal
 from meta_loom.cli import collect as _collect
 from meta_loom.cli import eval as _eval
@@ -19,6 +20,7 @@ _STAGES = {
     "train": _train,
     "eval": _eval,
     "build-universal": _build_universal,
+    "build-anchor": _build_anchor,
 }
 
 
