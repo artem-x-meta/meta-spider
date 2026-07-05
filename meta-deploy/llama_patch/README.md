@@ -74,13 +74,67 @@ Status (2026-07):
   to ggml in `cpp/meta_anchor_encoder.cpp`, **validated bit-for-bit vs PyTorch (max |Δ| 7e-7)** by
   `cpp/validate_anchor_encoder.py`. This was the missing primitive.
 - ✅ **CA injection** — identical `BottleneckCrossAttention`; the Doubter's `apply_to` is reused as-is.
-- ⏳ **Decode-loop integration (TODO).** Remaining work in `llama_adapter_meta`:
-  1. `encode`: add the `encoder_type=transformer` branch (port the validated graph above).
-  2. **Lifecycle — simpler than the Doubter's per-prompt refresh:** encode the anchor cog ONCE from
-     the GOAL TEXT's Pass-1 activations (not the running prompt), store it, and keep applying it. The
-     driver runs Pass-1 on the goal string once (via `META_ANCHOR="…spec…"`), calls
-     `llama_meta_encode`, then generates with the static cog applied every step.
-  3. **Trigger gating:** `trigger=always` (default) injects every step — that is the validated regime;
-     `fixed`/`learnable` would gate by the trigger metadata. always needs no extra hook.
-  A `llama-meta-anchor` example (or a `META_ANCHOR` mode of `meta-generate`) drives it. End-to-end
-  validation needs the base GGUF + a patched llama build — the primitives are done and checked.
+- ✅ **Decode-loop integration** — done in `llama_adapter_meta`:
+  1. `encode` now has an `encoder_type=transformer` branch (the validated graph above, ported line-for-line
+     into `src/llama-adapter.cpp`). Re-validated at production scale on the real v4.2 weights (16 layers,
+     ED=384, NB=2, NH=8): the standalone twin matches PyTorch to **max |Δ| 3.8e-6**.
+  2. **Lifecycle** (`META_ANCHOR` mode of `meta-generate`) — Pass-1 runs on the GOAL TEXT **once, before
+     the prompt loop**; `llama_meta_encode` stores the cog in the adapter, and every prompt injects that
+     static cog (no per-prompt Pass-1, no dynamic refresh). Simpler than the Doubter's per-prompt rebuild.
+  3. **Trigger gating:** `trigger=always` injects every step — the validated regime; `fixed`/`learnable`
+     would gate by the trigger metadata (not needed for always).
+- ✅ **End-to-end on 14B (plumbing)** — runs on the real `Qwen2.5-14B-Instruct-Q4_K_M.gguf`: the sidecar
+  loads, `[meta] anchor cog encoded from goal` fires (transformer `encode` on the 16-layer / ED=384 / NB=2
+  config, no crash), injection is **coherent at gain 1.0–4.0** (CA gate + AGC keep it stable, no garbage)
+  and **demonstrably changes the output** (base `divide_numbers` + its own docstring → anchor `divide`).
+- ✅ **Anchor goal text must be RAW, not chat-wrapped.** `GoalAnchor.set_anchor(goal)` tokenizes the goal
+  with `tok(goal_text)` — plain BOS + tokens, **no chat template** — and the encoder was trained on the raw
+  structured `spec_text` (`"TASK: …\n\nREQUIREMENTS (all mandatory):\n1. …"`). The `META_ANCHOR` driver
+  therefore tokenizes the goal RAW regardless of `META_RAW` (only the *prompt* gets `wrap()`). Feeding a
+  chat-wrapped or hand-written goal encodes the cog from the wrong activations → the anchor barely acts.
+  (This was a real driver bug, caught while chasing a phantom "Q4 weakens it" — quantization was not the
+  cause; the Doubter showed quant barely matters.)
+- ◑ **Drift-resistance reproduces (single faithful sample).** On a faithful mid-session slice (spec at t0,
+  first `solve` solution, then a lure turn "rename `solve`… add print() to debug"), base drifts on BOTH
+  constraints — renames to `divide_numbers` **and** emits active `print()` in the body — while the anchor
+  keeps the function **silent** (holds `no_print`; prints only in a comment). `func_name` drifted in both
+  (a stylistic family that erodes more). This is one eyeball, directionally consistent with the measured
+  +19pp (v4.2), **not** a harness number. A full llama.cpp adherence figure needs the session harness
+  ported over the whole spec set — the mechanism and the format are now correct.
+
+### Run (anchor)
+
+```bash
+META_SIDECAR=goal_anchor_v42.gguf \
+META_LAYERS=32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47 \
+META_ANCHOR="TASK: …\n\nREQUIREMENTS (all mandatory):\n1. …" \
+META_RAW=1 META_PROMPT="<Qwen chat-formatted task/context here>" META_NGEN=256 \
+./build/bin/llama-meta-generate -m qwen2.5-14b-instruct-q4_k_m.gguf -c 4096 -t 8
+#   META_ANCHOR present → anchor mode: cog encoded ONCE from the goal (tokenized RAW, no chat
+#   template — must match how GoalAnchor.set_anchor encodes it), held static every step.
+#   META_BASE=1 → clean base (no anchor) for the A/B drift comparison.
+```
+
+### Run (multi-turn agentic session) — `llama-meta-anchor-session`
+
+The agentic runtime: the anchor cog is encoded once at session start and **held across every turn**
+(the conversation grows; the goal does not wash out). History is rendered with the model's own
+**embedded chat template** (Qwen/Gemma/…), so no hand-rolled format. Observations (tool/feedback
+turns) are injected after each assistant turn.
+
+```bash
+META_SIDECAR=goal_anchor_v42.gguf META_LAYERS=32,33,…,47 \
+META_ANCHOR="TASK: …\n\nREQUIREMENTS (all mandatory):\n1. …"   # raw spec_text, encoded once \
+META_SYSTEM="You are a precise coding assistant…" \
+META_USER="<the initial task/spec turn>" \
+META_OBS=observations.bin   # \0-separated user/tool turns injected after each assistant reply \
+META_NGEN=160 \
+./build/bin/llama-meta-anchor-session -m qwen2.5-14b-instruct-q4_k_m.gguf -c 4096 -t 8
+#   META_BASE=1 → same conversation, no anchor (A/B). N observations → up to N+1 assistant turns.
+```
+
+Verified on 14B-Q4: encodes once, injects every turn, output stays coherent, base vs anchor differ.
+**Caveat — you cannot read the +19pp adherence off a single session.** That effect is statistical
+(base adheres ~0.56, anchor ~0.75), so any single eyeballed session drifts often in *both* arms —
+seeing the gap needs aggregation over many specs (an adherence harness layered on this driver), not
+one transcript. This driver is the *engine* for agentic use; the harness would be the *meter*.

@@ -1,13 +1,14 @@
 diff --git a/examples/CMakeLists.txt b/examples/CMakeLists.txt
-index 39f802d..0d6ff22 100644
+index 39f802d..0b794bc 100644
 --- a/examples/CMakeLists.txt
 +++ b/examples/CMakeLists.txt
-@@ -18,6 +18,8 @@ else()
+@@ -18,6 +18,9 @@ else()
      add_subdirectory(debug)
      add_subdirectory(embedding)
      add_subdirectory(eval-callback)
 +    add_subdirectory(extract-activations)
 +    add_subdirectory(meta-generate)
++    add_subdirectory(meta-anchor-session)
  
      add_subdirectory(gguf-hash)
      add_subdirectory(gguf)
@@ -43,7 +44,7 @@ index 27e4806..c06559b 100644
      // Memory
      //
 diff --git a/src/llama-adapter.cpp b/src/llama-adapter.cpp
-index 3e0fe66..7d4fbc3 100644
+index 3e0fe66..0c7898d 100644
 --- a/src/llama-adapter.cpp
 +++ b/src/llama-adapter.cpp
 @@ -4,10 +4,16 @@
@@ -63,7 +64,7 @@ index 3e0fe66..7d4fbc3 100644
  
  // vec
  
-@@ -495,3 +501,211 @@ const llama_token * llama_adapter_get_alora_invocation_tokens(const llama_adapte
+@@ -495,3 +501,265 @@ const llama_token * llama_adapter_get_alora_invocation_tokens(const llama_adapte
      GGML_ASSERT(adapter);
      return adapter->alora_invocation_tokens.data();
  }
@@ -127,6 +128,11 @@ index 3e0fe66..7d4fbc3 100644
 +      if (kid >= 0) enc_n_head = (int) gguf_get_val_u32(g, kid); }
 +    { int64_t kid = gguf_find_key(g, "meta_spider.encoder_type");
 +      if (kid >= 0) enc_type = gguf_get_val_str(g, kid); }
++    // transformer-encoder shape (GoalAnchor only; absent for Doubter sidecars → defaults)
++    enc_dim           = geti("meta_spider.encoder_dim", 0);
++    enc_num_blocks    = geti("meta_spider.encoder_num_blocks", 0);
++    enc_ffn_expansion = geti("meta_spider.encoder_ffn_expansion", 4);
++    use_layer_pos     = geti("meta_spider.use_layer_pos_embeddings", 1) != 0;
 +
 +    // 3. cog tensor [n_embd, n_cog]
 +    ggml_init_params cp = { 2 * ggml_tensor_overhead(), nullptr, true };
@@ -181,9 +187,56 @@ index 3e0fe66..7d4fbc3 100644
 +
 +    ggml_tensor * in_acts = ggml_new_tensor_2d(c, GGML_TYPE_F32, n_embd_m, n_layers);
 +    ggml_set_input(in_acts);
-+    // ── encoder: selective (current) or multi_token (legacy) → pre[bn, n_cog] ──
++    // ── encoder: transformer (GoalAnchor) → x[n_embd,n_cog] directly; else selective/multi_token → pre ──
 +    ggml_tensor * pre = nullptr;
-+    if (enc_type == "selective") {
++    ggml_tensor * x   = nullptr;   // final [n_embd, n_cog]; the transformer branch sets it, bypassing the tail
++    if (enc_type == "transformer") {
++        // TransformerEncoder (GoalAnchor). Ported bit-for-bit from cpp/meta_anchor_encoder.cpp
++        // (validated vs PyTorch, max|Δ| 7e-7). Linear layers here carry NO bias (unlike selective's
++        // output_proj), so this branch builds output_proj+output_norm itself and skips the shared tail.
++        const int ED = enc_dim, NB = enc_num_blocks, NH = enc_n_head;
++        const int HDt = ED / NH, FFN = ED * enc_ffn_expansion; (void) FFN;
++        auto MM = [&](ggml_tensor * t, const std::string & p) {
++            return ggml_mul_mat(c, ggml_cont(c, E(p+".weight")), t); };   // Linear, no bias
++        // per-layer projectors (HID→ED) → xt[ED, n_layers]
++        ggml_tensor * xt = nullptr;
++        for (int i = 0; i < n_layers; ++i) {
++            ggml_tensor * a = ggml_cont(c, ggml_view_2d(c, in_acts, n_embd_m, 1, in_acts->nb[1], (size_t) i*in_acts->nb[1]));
++            char pk[64]; snprintf(pk, sizeof(pk), "layer_projectors.%d", i);
++            ggml_tensor * p = MM(a, pk);                       // [ED,1]
++            xt = xt ? ggml_concat(c, xt, p, 1) : p;            // → [ED, n_layers]
++        }
++        if (use_layer_pos) xt = ggml_add(c, xt, E("layer_pos_embed"));
++        xt = LN(xt, "input_norm");
++        for (int b = 0; b < NB; ++b) {
++            char bp[64];
++            ggml_tensor * res = xt;
++            snprintf(bp, sizeof(bp), "blocks.%d.norm_attn", b);
++            ggml_tensor * h = LN(xt, bp);
++            snprintf(bp, sizeof(bp), "blocks.%d.q_proj", b); ggml_tensor * Q = MM(h, bp);
++            snprintf(bp, sizeof(bp), "blocks.%d.k_proj", b); ggml_tensor * K = MM(h, bp);
++            snprintf(bp, sizeof(bp), "blocks.%d.v_proj", b); ggml_tensor * V = MM(h, bp);
++            Q = ggml_cont(c, ggml_permute(c, ggml_reshape_3d(c, Q, HDt, NH, n_layers), 0,2,1,3));  // [HDt,NL,NH]
++            K = ggml_cont(c, ggml_permute(c, ggml_reshape_3d(c, K, HDt, NH, n_layers), 0,2,1,3));
++            ggml_tensor * kq = ggml_soft_max_ext(c, ggml_mul_mat(c, K, Q), nullptr, 1.0f/sqrtf((float)HDt), 0.0f);
++            ggml_tensor * Vp = ggml_cont(c, ggml_permute(c, ggml_reshape_3d(c, V, HDt, NH, n_layers), 1,2,0,3)); // [NL,HDt,NH]
++            ggml_tensor * kqv = ggml_cont(c, ggml_permute(c, ggml_mul_mat(c, Vp, kq), 0,2,1,3));   // [HDt,NH,NL]
++            ggml_tensor * att = ggml_reshape_2d(c, kqv, ED, n_layers);                             // [ED,NL]
++            snprintf(bp, sizeof(bp), "blocks.%d.o_proj", b); att = MM(att, bp);
++            xt = ggml_add(c, res, att);
++            res = xt;
++            snprintf(bp, sizeof(bp), "blocks.%d.norm_ffn", b); h = LN(xt, bp);
++            snprintf(bp, sizeof(bp), "blocks.%d.ffn.0", b);    h = ggml_gelu_erf(c, MM(h, bp));    // ED→FFN
++            snprintf(bp, sizeof(bp), "blocks.%d.ffn.2", b);    h = MM(h, bp);                      // FFN→ED
++            xt = ggml_add(c, res, h);
++        }
++        // output_proj (LN → Linear ED→HID → GELU → Linear HID→HID, no bias) + output_norm → [n_embd, n_cog]
++        xt = LN(xt, "output_proj.0");
++        xt = MM(xt, "output_proj.1");
++        xt = ggml_gelu_erf(c, xt);
++        xt = MM(xt, "output_proj.3");
++        x  = LN(xt, "output_norm");
++    } else if (enc_type == "selective") {
 +        // SelectiveEncoder: per-layer projector + scalar gate tanh(layer_gates.i); WITHOUT MHA
 +        // (1:1 layer→cognitive token). Verified against PyTorch/numpy (meta_deploy/spec.selective_forward).
 +        for (int i = 0; i < n_layers; ++i) {
@@ -218,12 +271,14 @@ index 3e0fe66..7d4fbc3 100644
 +        pre = ggml_reshape_2d(c, ggml_cont(c, ggml_permute(c, ggml_mul_mat(c, Vp, kq), 0,2,1,3)), bottleneck, n_cog);
 +        pre = ggml_add(c, ggml_mul_mat(c, E("cross_attn.out_proj.weight"), pre), E("cross_attn.out_proj.bias"));
 +    }
-+    // output_proj + output_norm (shared tail of both encoders)
-+    ggml_tensor * x = LN(pre, "output_proj.0");
-+    x = LIN(x, "output_proj.1");
-+    x = ggml_gelu_erf(c, x);
-+    x = LIN(x, "output_proj.3");
-+    x = LN(x, "output_norm");                                  // [n_embd, n_cog]
++    // output_proj + output_norm (shared tail of selective/multi_token; transformer built its own above)
++    if (x == nullptr) {
++        x = LN(pre, "output_proj.0");
++        x = LIN(x, "output_proj.1");
++        x = ggml_gelu_erf(c, x);
++        x = LIN(x, "output_proj.3");
++        x = LN(x, "output_norm");                              // [n_embd, n_cog]
++    }
 +    ggml_set_output(x);
 +
 +    ggml_cgraph * gf = ggml_new_graph(c);
@@ -273,10 +328,10 @@ index 3e0fe66..7d4fbc3 100644
 +    kqv = ggml_cont(ctx, ggml_permute(ctx, kqv, 0, 2, 1, 3));        // [head_dim, n_head, seq]
 +    ggml_tensor * att = ggml_reshape_2d(ctx, kqv, bottleneck, seq);   // [bn, seq]
 +    ggml_tensor * out = ggml_mul_mat(ctx, W("up_proj.weight"), att);  // [n_embd, seq]
-+    return ggml_add(ctx, cur, ggml_scale(ctx, out, gate_tanh.at(il) * (getenv("META_GAIN") ? (float) atof(getenv("META_GAIN")) : 1.0f)));
++    return ggml_add(ctx, cur, ggml_scale(ctx, out, gate_tanh.at(il)));
 +}
 diff --git a/src/llama-adapter.h b/src/llama-adapter.h
-index f0b1e50..b7b7cc8 100644
+index f0b1e50..542b892 100644
 --- a/src/llama-adapter.h
 +++ b/src/llama-adapter.h
 @@ -15,9 +15,12 @@
@@ -302,7 +357,7 @@ index f0b1e50..b7b7cc8 100644
      bool init(const llama_model & model);
  
      int32_t layer_start = -1;
-@@ -41,6 +44,51 @@ private:
+@@ -41,6 +44,56 @@ private:
  
  using llama_adapter_cvec_ptr = std::shared_ptr<llama_adapter_cvec>;
  
@@ -345,7 +400,12 @@ index f0b1e50..b7b7cc8 100644
 +    // built-in encoder (enc.<key> → tensor) for encode()/dynamic refresh
 +    std::unordered_map<std::string, ggml_tensor *> enc;
 +    int enc_n_head = 8;
-+    std::string enc_type = "multi_token";  // 'selective' (current) | 'multi_token' (legacy)
++    std::string enc_type = "multi_token";  // 'selective' | 'multi_token' (legacy) | 'transformer' (GoalAnchor)
++    // transformer-encoder shape (GoalAnchor); read from sidecar metadata, not hardcoded
++    int enc_dim = 0;                // encoder_dim (ED)
++    int enc_num_blocks = 0;         // encoder_num_blocks (NB)
++    int enc_ffn_expansion = 4;      // encoder_ffn_expansion
++    bool use_layer_pos = true;      // use_layer_pos_embeddings
 +    ggml_backend_ptr enc_backend;  // CPU backend for the encode graph
 +
 +    bool is_cross(int il) const;

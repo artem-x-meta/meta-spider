@@ -1,19 +1,25 @@
-// meta-generate — two-pass Doubter (meta-spider) inference in llama.cpp.
+// meta-generate — двухпроходный инференс Скептика (meta-spider) в llama.cpp.
 //
-// Pass 1 (clean): run the prompt, cb_eval taps the residual l_out-{il} of the target layers
-//   (last token). cog is not set yet → the meta adapter does NOT inject (Pass-1 is clean).
-// In between: activations → meta_encoder.exe (external ggml encoder) → cognitive tokens.
-// Pass 2 (injection): llama_set_meta_cog turns on CA injection; clear the KV, decode
-//   the prompt again (now with injection) and greedy-generate the answer.
+// Pass 1 (чистый): прогон промпта, cb_eval тапит residual l_out-{il} target-слоёв
+//   (последний токен). cog ещё не задан → meta-адаптер НЕ инъектит (Pass-1 чистый).
+// Между: активации → meta_encoder.exe (внешний ggml-энкодер) → cognitive tokens.
+// Pass 2 (инъекция): llama_set_meta_cog включает CA-инъекцию; чистим KV, декодим
+//   промпт заново (теперь с инъекцией) и greedy-генерируем ответ.
+//
+// Anchor-режим (GoalAnchor): META_ANCHOR="<текст цели/спека>" → cog кодируется из активаций
+//   ЦЕЛИ ОДИН раз (Pass-1 на тексте цели, до цикла) и держится статично на ВСЕЙ генерации
+//   (trigger=always — валидированный режим). Тогда META_PROMPT/META_PROMPTS — рабочий контекст,
+//   а не источник cog; per-prompt Pass-1 и dynamic-рефреш выключаются. Без META_ANCHOR — режим
+//   Doubter (cog из самого промпта, как раньше).
 //
 // Env:
-//   META_SIDECAR  — doubter_sidecar.gguf (CA + enc weights)
-//   META_ENCODER  — path to meta_encoder.exe (encoder forward)
-//   META_LAYERS   — csv of target layers (e.g. 10,14,18,22,25)
-//   META_PROMPT   — question text (without a chat wrapper; we wrap it in Gemma format)
-//   META_NGEN     — max generation tokens (default 200)
-//   META_TMP      — directory for acts.bin/cog.bin (default .)
-// Model/threads — standard flags (-m, -t, -c).
+//   META_SIDECAR  — sidecar.gguf (CA + enc веса; kind=doubter|goal_anchor)
+//   META_ANCHOR   — текст цели для якоря (включает anchor-режим; cog из него, один раз)
+//   META_LAYERS   — csv target-слоёв (напр. 10,14,18,22,25)
+//   META_PROMPT   — текст вопроса/контекст (без chat-обёртки; обернём в Gemma-формат)
+//   META_NGEN     — макс токенов генерации (default 200)
+//   META_TMP      — каталог для acts.bin/cog.bin (default .)
+// Модель/потоки — стандартные флаги (-m, -t, -c).
 
 #include "arg.h"
 #include "common.h"
@@ -35,7 +41,7 @@
 struct tap_cb {
     std::map<int,int> layer_to_slot;
     int n_embd = 0;
-    float * cur_out = nullptr;       // Pass-1 buffer [n_layers*n_embd]; null outside Pass-1
+    float * cur_out = nullptr;       // буфер Pass-1 [n_layers*n_embd]; null вне Pass-1
     std::vector<uint8_t> scratch;
 };
 
@@ -88,8 +94,8 @@ int main(int argc, char ** argv) {
     const char * sidecar = getenv("META_SIDECAR");
     const char * env_lay = getenv("META_LAYERS");
     const char * prompt  = getenv("META_PROMPT");
-    const char * prompts_file = getenv("META_PROMPTS");   // batch: \0-separated
-    const char * out_file = getenv("META_OUT");           // batch output (\0-separated)
+    const char * prompts_file = getenv("META_PROMPTS");   // batch: \0-разделённые
+    const char * out_file = getenv("META_OUT");           // batch output (\0-разделённый)
     if (!sidecar || !env_lay || (!prompt && !prompts_file)) {
         fprintf(stderr, "set META_SIDECAR / META_LAYERS / (META_PROMPT | META_PROMPTS)\n"); return 1;
     }
@@ -122,7 +128,7 @@ int main(int argc, char ** argv) {
     const int min_iv = 3, max_iv = 20;
     const int n_vocab = llama_vocab_n_tokens(vocab);
 
-    // base mode = no meta adapter (clean base, oracle); otherwise attach the adapter
+    // base-режим = без meta-адаптера (чистая база, оракул); иначе ставим адаптер
     if (!base_mode && llama_set_meta_adapter(ctx, sidecar) != 0) { fprintf(stderr, "meta adapter fail\n"); return 1; }
 
     auto cossim = [&](const std::vector<float>&a, const std::vector<float>&b){
@@ -130,35 +136,56 @@ int main(int argc, char ** argv) {
         return (na>0&&nb>0)? dot/(sqrt(na)*sqrt(nb)) : 1.0; };
 
     const bool raw_prompt = getenv("META_RAW") && atoi(getenv("META_RAW")) != 0;
+    const char * anchor_env = getenv("META_ANCHOR");
+    const bool anchor_mode = anchor_env && !base_mode;   // GoalAnchor: cog из цели, один раз, статично
+    auto wrap = [&](const std::string & s) {
+        return raw_prompt ? s
+            : std::string("<start_of_turn>user\n") + s + "<end_of_turn>\n<start_of_turn>model\n"; };
+
+    // Anchor: Pass-1 на ТЕКСТЕ ЦЕЛИ один раз → cog держится в адаптере на все промпты (persist).
+    // ВАЖНО: цель токенизируется СЫРЬЁМ (как GoalAnchor.set_anchor → tok(goal_text): BOS + токены,
+    // БЕЗ chat-шаблона). Оборачивать её в <|im_start|> нельзя — энкодер учился на сырых активациях
+    // структурированного spec_text ("TASK:\n\nREQUIREMENTS (all mandatory):\n1. ..."). wrap() — только промпту.
+    if (anchor_mode) {
+        std::vector<llama_token> atok = common_tokenize(ctx, std::string(anchor_env), true, true);
+        std::vector<float> acts(layers.size() * cb.n_embd, 0.0f);
+        cb.cur_out = acts.data();
+        llama_memory_clear(llama_get_memory(ctx), true);
+        llama_decode(ctx, llama_batch_get_one(atok.data(), (int) atok.size()));
+        cb.cur_out = nullptr;
+        llama_meta_encode(ctx, acts.data(), (int) layers.size(), cb.n_embd);
+        fprintf(stderr, "[meta] anchor cog encoded from goal (%zu tok)\n", atok.size());
+    }
+
     auto run_one = [&](const std::string & q) -> std::string {
-        // META_RAW=1 → prompt as is (for non-Gemma models pass your own chat format in META_PROMPT)
-        std::string text = raw_prompt ? q
-            : std::string("<start_of_turn>user\n") + q + "<end_of_turn>\n<start_of_turn>model\n";
+        // META_RAW=1 → промпт как есть (для не-Gemma моделей передай свой chat-формат в META_PROMPT)
+        std::string text = wrap(q);
         std::vector<llama_token> tokens = common_tokenize(ctx, text, true, true);
         std::vector<float> acts(layers.size() * cb.n_embd, 0.0f);
-        if (!base_mode) {
-            // Pass-1: clean tap (cog is still zero → no injection) → encoder
+        if (!base_mode && !anchor_mode) {
+            // Doubter Pass-1: чистый тап (cog ещё нули → инъекции нет) → энкодер, per-prompt
             cb.cur_out = acts.data();
             llama_memory_clear(llama_get_memory(ctx), true);
             llama_decode(ctx, llama_batch_get_one(tokens.data(), tokens.size()));
             cb.cur_out = nullptr;
             llama_meta_encode(ctx, acts.data(), (int) layers.size(), cb.n_embd);
         }
-        // Pass-2 (injection) or the single pass (base)
+        // Pass-2 (инъекция) или единственный проход (base)
         llama_memory_clear(llama_get_memory(ctx), true);
         llama_decode(ctx, llama_batch_get_one(tokens.data(), tokens.size()));
         std::vector<float> cached = acts, step(acts.size(), 0.0f);
         std::string outtext; int since = 0, cur_iv = min_iv;
+        const bool do_dynamic = dynamic && !base_mode && !anchor_mode;   // якорь статичен → без рефреша
         for (int n = 0; n < n_gen; ++n) {
             float * logits = llama_get_logits_ith(ctx, -1);
             llama_token best = 0; float bv = logits[0];
             for (int i = 1; i < n_vocab; ++i) if (logits[i] > bv) { bv = logits[i]; best = i; }
             if (llama_vocab_is_eog(vocab, best)) break;
             outtext += common_token_to_piece(ctx, best);
-            if (dynamic && !base_mode) cb.cur_out = step.data();
+            if (do_dynamic) cb.cur_out = step.data();
             if (llama_decode(ctx, llama_batch_get_one(&best, 1))) break;
             cb.cur_out = nullptr;
-            if (dynamic && !base_mode) {
+            if (do_dynamic) {
                 if (++since >= cur_iv) {
                     if (since >= max_iv || cossim(step, cached) < thr) {
                         llama_meta_encode(ctx, step.data(), (int) layers.size(), cb.n_embd);
@@ -177,7 +204,7 @@ int main(int argc, char ** argv) {
     for (size_t i = 0; i < prompts.size(); ++i) {
         fprintf(stderr, "[meta] prompt %zu/%zu start\n", i, prompts.size()); fflush(stderr);
         std::string r = run_one(prompts[i]);
-        for (char & ch : r) if (ch == '\n' || ch == '\r') ch = ' ';   // one line per prompt
+        for (char & ch : r) if (ch == '\n' || ch == '\r') ch = ' ';   // одна строка/промпт
         if (out_file) { out.write(r.data(), r.size()); out.put('\0'); out.flush(); }
         else printf("\n=== META OUTPUT ===\n%s\n", r.c_str());
         if (prompts_file && (i + 1) % 10 == 0) fprintf(stderr, "  %zu/%zu\n", i + 1, prompts.size());
