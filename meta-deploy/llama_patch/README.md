@@ -60,3 +60,27 @@ META_PROMPT="What is the capital of France?" META_NGEN=64 \
 Verified end-to-end on Qwen2.5-0.5B (selective): the base answers "…Paris…", the Doubter →
 `I'm not confident enough to answer this question accurately.` — verbatim like the PyTorch inference
 of the same sidecar. The encoder sizes/type are read from the sidecar metadata (`metadeploy export`).
+
+## GoalAnchor deploy — status & integration design
+
+The behavior-modifier voice (GoalAnchor) deploys through the SAME machinery with three differences.
+Status (2026-07):
+
+- ✅ **GGUF export** — `metadeploy export` autodetects `kind=goal_anchor`; the sidecar carries
+  `meta_spider.kind` + trigger metadata + the transformer-encoder shape (encoder_dim / num_blocks /
+  enc_num_heads / ffn_expansion / use_layer_pos_embeddings).
+- ✅ **Transformer-encoder ggml forward** — the anchor uses a `TransformerEncoder` (self-attention
+  over the layer tokens), which the Doubter path did not have (selective / multi_token only). Ported
+  to ggml in `cpp/meta_anchor_encoder.cpp`, **validated bit-for-bit vs PyTorch (max |Δ| 7e-7)** by
+  `cpp/validate_anchor_encoder.py`. This was the missing primitive.
+- ✅ **CA injection** — identical `BottleneckCrossAttention`; the Doubter's `apply_to` is reused as-is.
+- ⏳ **Decode-loop integration (TODO).** Remaining work in `llama_adapter_meta`:
+  1. `encode`: add the `encoder_type=transformer` branch (port the validated graph above).
+  2. **Lifecycle — simpler than the Doubter's per-prompt refresh:** encode the anchor cog ONCE from
+     the GOAL TEXT's Pass-1 activations (not the running prompt), store it, and keep applying it. The
+     driver runs Pass-1 on the goal string once (via `META_ANCHOR="…spec…"`), calls
+     `llama_meta_encode`, then generates with the static cog applied every step.
+  3. **Trigger gating:** `trigger=always` (default) injects every step — that is the validated regime;
+     `fixed`/`learnable` would gate by the trigger metadata. always needs no extra hook.
+  A `llama-meta-anchor` example (or a `META_ANCHOR` mode of `meta-generate`) drives it. End-to-end
+  validation needs the base GGUF + a patched llama build — the primitives are done and checked.

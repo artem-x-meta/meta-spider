@@ -70,6 +70,12 @@ def export_sidecar(checkpoint_path: str, *, target_layers: Sequence[int],
         w.add_string("meta_spider.trigger", str(cfg.get("trigger", "always")))
         w.add_uint32("meta_spider.trigger_k", int(cfg.get("trigger_k", 100)))
         w.add_uint32("meta_spider.trigger_decision_layer", int(cfg.get("trigger_decision_layer", 9)))
+        # transformer-encoder shape (C++ builds the encoder graph from these, not hardcoded)
+        w.add_uint32("meta_spider.encoder_dim", int(cfg.get("encoder_dim", 384)))
+        w.add_uint32("meta_spider.encoder_num_blocks", int(cfg.get("encoder_num_blocks", 2)))
+        w.add_uint32("meta_spider.encoder_ffn_expansion", int(cfg.get("encoder_ffn_expansion", 4)))
+        w.add_uint32("meta_spider.use_layer_pos_embeddings",
+                     int(bool(cfg.get("use_layer_pos_embeddings", True))))
 
     # --- encoder tensors ---
     n_enc = 0
