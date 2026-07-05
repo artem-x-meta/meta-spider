@@ -6,20 +6,21 @@
 // приманки). История каждый ход рендерится ВСТРОЕННЫМ chat-шаблоном модели (Qwen/Gemma/…),
 // KV чистится и перекодируется (с инъекцией) — cog НЕ пересчитывается.
 //
-// Это агентный аналог одноходового meta-generate: тот же lifecycle (encode once, hold),
-// но с несколькими ходами ассистента, разделёнными обсервациями (тул/юзер).
+// Два режима:
+//   ОДИНОЧНЫЙ — META_USER (+ META_OBS) → печать ходов в stdout (демо/A-B глазами).
+//   БАТЧ (харнесс) — META_SESSIONS=<jsonl>: каждая строка {id, goal, system, user, obs:[...]}.
+//     Модель грузится ОДИН раз; на КАЖДУЮ сессию якорь пере-энкодится из её goal; вывод —
+//     META_SESS_OUT=<jsonl> строк {id, arm, turns:[code0,code1,...]}. Python-обёртка генерит
+//     спеки/дрейф-сессии и AST-грейдит adherence (движок здесь, замерялка — снаружи).
 //
 // Env:
 //   META_SIDECAR  — sidecar.gguf (CA + enc; kind=goal_anchor)
-//   META_ANCHOR   — ТЕКСТ ЦЕЛИ (СЫРЬЁМ, без chat-обёртки). Задаёт anchor-режим.
+//   META_ANCHOR   — ТЕКСТ ЦЕЛИ (СЫРЬЁМ) для ОДИНОЧНОГО режима. Задаёт anchor-режим.
 //   META_LAYERS   — csv target-слоёв (напр. 32,33,...,47)
-//   META_SYSTEM   — систем-промпт (опц.)
-//   META_USER     — начальный ход пользователя (спек задачи)
-//   META_OBS      — файл с обсервациями (\0-разделённые): вставляются как user-ход ПОСЛЕ
-//                   каждого ответа ассистента. N обсерваций → до N+1 ходов ассистента.
+//   META_SYSTEM / META_USER / META_OBS — одиночная сессия (см. выше)
+//   META_SESSIONS / META_SESS_OUT — батч-режим (jsonl вход/выход)
 //   META_NGEN     — макс токенов на ход (default 256)
-//   META_BASE     — 1 = чистая база БЕЗ якоря (для A/B того же диалога)
-//   META_GAIN     — сила инъекции (default 1.0)
+//   META_BASE     — 1 = чистая база БЕЗ якоря (для A/B; в батче — арм "base")
 // Модель/потоки — стандартные флаги (-m, -t, -c).
 
 #include "arg.h"
@@ -28,6 +29,7 @@
 #include "llama.h"
 #include "ggml.h"
 #include "ggml-backend.h"
+#include "nlohmann/json.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -37,6 +39,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+using json = nlohmann::ordered_json;
 
 struct tap_cb {
     std::map<int,int> layer_to_slot;
@@ -76,7 +80,6 @@ static bool cb_eval(ggml_tensor * t, bool ask, void * ud) {
     return true;
 }
 
-// \0-разделённый файл → список строк
 static std::vector<std::string> read_split(const std::string & path) {
     std::ifstream f(path, std::ios::binary);
     std::stringstream ss; ss << f.rdbuf();
@@ -92,17 +95,18 @@ int main(int argc, char ** argv) {
 
     const char * sidecar = getenv("META_SIDECAR");
     const char * env_lay = getenv("META_LAYERS");
+    const char * sessions_file = getenv("META_SESSIONS");   // батч-режим
+    const char * sess_out = getenv("META_SESS_OUT");
     const char * anchor_env = getenv("META_ANCHOR");
     const char * user0 = getenv("META_USER");
     const char * sys_env = getenv("META_SYSTEM");
     const char * obs_file = getenv("META_OBS");
-    if (!sidecar || !env_lay || !user0) {
-        fprintf(stderr, "set META_SIDECAR / META_LAYERS / META_USER (+ META_ANCHOR for the anchor)\n");
+    if (!sidecar || !env_lay || (!sessions_file && !user0)) {
+        fprintf(stderr, "set META_SIDECAR / META_LAYERS / (META_USER | META_SESSIONS)\n");
         return 1;
     }
     const int n_gen = getenv("META_NGEN") ? atoi(getenv("META_NGEN")) : 256;
     const bool base_mode = getenv("META_BASE") && atoi(getenv("META_BASE")) != 0;
-    const bool anchor_mode = anchor_env && !base_mode;
 
     std::vector<int> layers;
     { std::stringstream ss(env_lay); std::string it; while (std::getline(ss, it, ',')) if (!it.empty()) layers.push_back(atoi(it.c_str())); }
@@ -124,64 +128,95 @@ int main(int argc, char ** argv) {
     cb.n_embd = llama_model_n_embd(model);
     const int n_vocab = llama_vocab_n_tokens(vocab);
 
-    // meta-адаптер (кроме base-режима)
     if (!base_mode && llama_set_meta_adapter(ctx, sidecar) != 0) { fprintf(stderr, "meta adapter fail\n"); return 1; }
-
-    // встроенный chat-шаблон модели (Qwen/Gemma/… из GGUF)
     auto tmpls = common_chat_templates_init(model, "");
 
-    // ── якорь: Pass-1 на СЫРОМ тексте цели ОДИН раз → cog держится весь диалог ──
-    if (anchor_mode) {
-        std::vector<llama_token> atok = common_tokenize(ctx, std::string(anchor_env), true, true);
+    // энкод якоря из СЫРОГО текста цели (Pass-1) — держится до следующего encode
+    auto encode_anchor = [&](const std::string & goal) {
+        std::vector<llama_token> atok = common_tokenize(ctx, goal, true, true);
         std::vector<float> acts(layers.size() * cb.n_embd, 0.0f);
         cb.cur_out = acts.data();
         llama_memory_clear(llama_get_memory(ctx), true);
         llama_decode(ctx, llama_batch_get_one(atok.data(), (int) atok.size()));
         cb.cur_out = nullptr;
         llama_meta_encode(ctx, acts.data(), (int) layers.size(), cb.n_embd);
-        fprintf(stderr, "[meta] anchor cog encoded from goal (%zu tok) — held across all turns\n", atok.size());
-    }
-
-    std::vector<std::string> observations = obs_file ? read_split(obs_file) : std::vector<std::string>{};
-
-    // история сессии
-    std::vector<common_chat_msg> msgs;
-    if (sys_env && *sys_env) { common_chat_msg m; m.role = "system"; m.content = sys_env; msgs.push_back(m); }
-    { common_chat_msg m; m.role = "user"; m.content = user0; msgs.push_back(m); }
-
-    auto render = [&]() -> std::string {
-        common_chat_templates_inputs in;
-        in.messages = msgs;
-        in.add_generation_prompt = true;
-        in.use_jinja = true;
-        in.enable_thinking = false;
-        return common_chat_templates_apply(tmpls.get(), in).prompt;
     };
 
-    const size_t max_turns = observations.size() + 1;
-    for (size_t turn = 0; turn < max_turns; ++turn) {
-        std::string prompt = render();
-        std::vector<llama_token> tokens = common_tokenize(ctx, prompt, true, true);
-        llama_memory_clear(llama_get_memory(ctx), true);
-        if (llama_decode(ctx, llama_batch_get_one(tokens.data(), (int) tokens.size()))) {
-            fprintf(stderr, "decode fail (turn %zu)\n", turn); break;
+    // прогон одной сессии: system + user + [obs...] → код ассистента по ходам (cog держится).
+    // Полный ре-декод каждый ход (KV чистится) — корректно и детерминированно; генерация на CPU
+    // доминирует над префиллом, так что переиспользование KV не даёт выигрыша (проверено).
+    auto run_turns = [&](const std::string & system, const std::string & user,
+                         const std::vector<std::string> & observations) -> std::vector<std::string> {
+        std::vector<common_chat_msg> msgs;
+        if (!system.empty()) { common_chat_msg m; m.role = "system"; m.content = system; msgs.push_back(m); }
+        { common_chat_msg m; m.role = "user"; m.content = user; msgs.push_back(m); }
+        std::vector<std::string> turns;
+        const size_t max_turns = observations.size() + 1;
+        for (size_t turn = 0; turn < max_turns; ++turn) {
+            common_chat_templates_inputs in;
+            in.messages = msgs; in.add_generation_prompt = true; in.use_jinja = true; in.enable_thinking = false;
+            std::string prompt = common_chat_templates_apply(tmpls.get(), in).prompt;
+            std::vector<llama_token> tokens = common_tokenize(ctx, prompt, true, true);
+            llama_memory_clear(llama_get_memory(ctx), true);
+            if (llama_decode(ctx, llama_batch_get_one(tokens.data(), (int) tokens.size()))) break;
+            std::string resp;
+            for (int n = 0; n < n_gen; ++n) {
+                float * logits = llama_get_logits_ith(ctx, -1);
+                llama_token best = 0; float bv = logits[0];
+                for (int i = 1; i < n_vocab; ++i) if (logits[i] > bv) { bv = logits[i]; best = i; }
+                if (llama_vocab_is_eog(vocab, best)) break;
+                resp += common_token_to_piece(ctx, best);
+                // ранняя остановка: грейдим только ПЕРВЫЙ код-блок — как закрылся (2-й ```), стоп.
+                // Режет длинные пояснения-хвосты (чистые потерянные токены на CPU).
+                { size_t c = 0, p = 0; while ((p = resp.find("```", p)) != std::string::npos) { ++c; p += 3; }
+                  if (c >= 2) break; }
+                if (llama_decode(ctx, llama_batch_get_one(&best, 1))) break;
+            }
+            turns.push_back(resp);
+            { common_chat_msg m; m.role = "assistant"; m.content = resp; msgs.push_back(m); }
+            if (turn < observations.size()) { common_chat_msg m; m.role = "user"; m.content = observations[turn]; msgs.push_back(m); }
         }
-        std::string resp;
-        for (int n = 0; n < n_gen; ++n) {
-            float * logits = llama_get_logits_ith(ctx, -1);
-            llama_token best = 0; float bv = logits[0];
-            for (int i = 1; i < n_vocab; ++i) if (logits[i] > bv) { bv = logits[i]; best = i; }
-            if (llama_vocab_is_eog(vocab, best)) break;
-            resp += common_token_to_piece(ctx, best);
-            if (llama_decode(ctx, llama_batch_get_one(&best, 1))) break;
+        return turns;
+    };
+
+    // ───────────────────────── БАТЧ (харнесс) ─────────────────────────
+    if (sessions_file) {
+        std::ifstream f(sessions_file);
+        std::ofstream out;
+        if (sess_out) out.open(sess_out, std::ios::binary);
+        std::string line; size_t idx = 0;
+        const std::string arm = base_mode ? "base" : "anchor";
+        while (std::getline(f, line)) {
+            if (line.empty()) continue;
+            json s = json::parse(line, nullptr, false);
+            if (s.is_discarded()) { fprintf(stderr, "bad json line %zu\n", idx); continue; }
+            std::string id = s.value("id", std::to_string(idx));
+            std::string goal = s.value("goal", "");
+            std::string system = s.value("system", "");
+            std::string user = s.value("user", "");
+            std::vector<std::string> obs;
+            if (s.contains("obs")) for (auto & o : s["obs"]) obs.push_back(o.get<std::string>());
+            if (!base_mode && !goal.empty()) encode_anchor(goal);   // якорь под ЭТОТ спек
+            std::vector<std::string> turns = run_turns(system, user, obs);
+            json rec; rec["id"] = id; rec["arm"] = arm; rec["turns"] = turns;
+            std::string js = rec.dump();
+            if (sess_out) { out << js << "\n"; out.flush(); } else printf("%s\n", js.c_str());
+            fprintf(stderr, "[harness] %s session %zu (%s) — %zu turns\n", arm.c_str(), idx, id.c_str(), turns.size());
+            ++idx;
         }
-        printf("\n=== TURN %zu (assistant%s) ===\n%s\n", turn, anchor_mode ? "+anchor" : (base_mode ? " base" : ""), resp.c_str());
-        fflush(stdout);
-        { common_chat_msg m; m.role = "assistant"; m.content = resp; msgs.push_back(m); }
-        if (turn < observations.size()) {
-            common_chat_msg m; m.role = "user"; m.content = observations[turn]; msgs.push_back(m);
-        }
+        llama_backend_free();
+        return 0;
     }
+
+    // ───────────────────────── ОДИНОЧНЫЙ (демо) ─────────────────────────
+    const bool anchor_mode = anchor_env && !base_mode;
+    if (anchor_mode) { encode_anchor(std::string(anchor_env));
+        fprintf(stderr, "[meta] anchor cog encoded from goal — held across all turns\n"); }
+    std::vector<std::string> observations = obs_file ? read_split(obs_file) : std::vector<std::string>{};
+    std::vector<std::string> turns = run_turns(sys_env ? sys_env : "", user0, observations);
+    for (size_t t = 0; t < turns.size(); ++t)
+        printf("\n=== TURN %zu (assistant%s) ===\n%s\n", t,
+               anchor_mode ? "+anchor" : (base_mode ? " base" : ""), turns[t].c_str());
     llama_backend_free();
     return 0;
 }

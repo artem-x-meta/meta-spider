@@ -94,13 +94,16 @@ Status (2026-07):
   chat-wrapped or hand-written goal encodes the cog from the wrong activations → the anchor barely acts.
   (This was a real driver bug, caught while chasing a phantom "Q4 weakens it" — quantization was not the
   cause; the Doubter showed quant barely matters.)
-- ◑ **Drift-resistance reproduces (single faithful sample).** On a faithful mid-session slice (spec at t0,
-  first `solve` solution, then a lure turn "rename `solve`… add print() to debug"), base drifts on BOTH
-  constraints — renames to `divide_numbers` **and** emits active `print()` in the body — while the anchor
-  keeps the function **silent** (holds `no_print`; prints only in a comment). `func_name` drifted in both
-  (a stylistic family that erodes more). This is one eyeball, directionally consistent with the measured
-  +19pp (v4.2), **not** a harness number. A full llama.cpp adherence figure needs the session harness
-  ported over the whole spec set — the mechanism and the format are now correct.
+- ✅ **Drift-defense reproduces in Q4/CPU — harness number.** A session harness (`llama-meta-anchor-session`
+  batch mode + `lab/.../llama_harness.py`, AST grading, no LLM judge) over 16 MBPP specs with erosive
+  constraints, drift session (spec at t0 → one lure turn), base vs anchor: **Δ adherence = +12.6 pp**
+  (base 0.312 → anchor 0.438 on the final, lured turn; anchor also holds t0 better, 1.0 vs 0.938). Per
+  family the anchor holds `no_print` (5/5 vs 4/5), `require_docstring` (5/9 vs 3/9), `single_function`
+  (6/9 vs 5/9); `type_hints` erodes in both. **Directionally consistent with the fp16 +19pp (v4.2)** —
+  the defense survives Q4 quantization and CPU deploy. Caveats: n=16, single seed, `func_name` excluded
+  from the metric (its rename lure is imperative → obedience not drift, and it mechanically breaks the
+  tests). Report: `docs/results/qwen-14b/goal-anchor-llamacpp-harness.md`. A cleaner headline wants passive
+  lures + more seeds — but the effect is now a measured aggregate, not an eyeball.
 
 ### Run (anchor)
 
