@@ -5,13 +5,13 @@ on_post_forward / on_detach + step hooks); `MetaSpiderPipeline.attach()` speaks 
 contract. The concrete voices (Doubter, GoalAnchor, …) live in the **meta-daimon** package —
 see its docstring for the leg's philosophy (Socratic daimonion: counsels, doesn't rule).
 
-Back-compat: `from meta_core.modifiers import Doubter` is forwarded lazily
+Back-compat: `from meta_core.modifiers import Doubter / GoalAnchor` is forwarded lazily
 to `meta_daimon` when it is installed.
 """
 
 from meta_core.modifiers.base import Modifier
 
-_DAIMON_NAMES = ("Doubter",)
+_DAIMON_NAMES = ("Doubter", "GoalAnchor")
 
 __all__ = ["Modifier", *_DAIMON_NAMES]
 

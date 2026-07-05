@@ -42,18 +42,34 @@ def export_sidecar(checkpoint_path: str, *, target_layers: Sequence[int],
         a = t.detach().to(torch.float32).cpu().numpy()
         return a.reshape(1) if a.ndim == 0 else a
 
+    # kind: 'doubter' (buffer rebuilt each prompt) vs 'goal_anchor' (static anchor + trigger).
+    # GoalAnchor uses a transformer encoder with different config keys (encoder_num_heads,
+    # no encoder_type / num_cognitive_tokens) — map them so the C++ side reads uniform metadata.
+    kind = str(ck.get("kind", "doubter"))
+    is_anchor = kind == "goal_anchor"
+    enc_type = "transformer" if is_anchor else str(cfg.get("encoder_type", "unknown"))
+    enc_heads = int(cfg.get("encoder_num_heads", cfg.get("transformer_num_heads", 8)))
+    num_cog = len(target_layers) if is_anchor else int(cfg.get("num_cognitive_tokens", 8))
+
     w = GGUFWriter(str(out), ARCH)
 
     # --- metadata (C++ reads sizes/encoder type from here → doesn't hardcode) ---
-    w.add_string("meta_spider.encoder_type", str(cfg.get("encoder_type", "unknown")))
+    w.add_string("meta_spider.kind", kind)
+    w.add_string("meta_spider.encoder_type", enc_type)
     w.add_uint32("meta_spider.hidden_dim", int(hidden_dim))
     w.add_uint32("meta_spider.bottleneck_dim", int(cfg.get("ca_bottleneck_dim", 256)))
-    w.add_uint32("meta_spider.num_cognitive_tokens", int(cfg.get("num_cognitive_tokens", 8)))
+    w.add_uint32("meta_spider.num_cognitive_tokens", int(num_cog))
     w.add_uint32("meta_spider.ca_num_heads", int(cfg.get("ca_num_heads", 8)))
-    w.add_uint32("meta_spider.enc_num_heads", int(cfg.get("transformer_num_heads", 8)))
+    w.add_uint32("meta_spider.enc_num_heads", enc_heads)
     w.add_array("meta_spider.target_layers", [int(x) for x in target_layers])
     w.add_array("meta_spider.cross_attn_layers", [int(x) for x in cross_attn_layers])
     w.add_string("meta_spider.gate_activation", "tanh")  # C++: cur += tanh(gate)*CA(...)
+
+    # --- trigger metadata (GoalAnchor only): the C++ runtime gates re-injection by these ---
+    if is_anchor:
+        w.add_string("meta_spider.trigger", str(cfg.get("trigger", "always")))
+        w.add_uint32("meta_spider.trigger_k", int(cfg.get("trigger_k", 100)))
+        w.add_uint32("meta_spider.trigger_decision_layer", int(cfg.get("trigger_decision_layer", 9)))
 
     # --- encoder tensors ---
     n_enc = 0
@@ -85,6 +101,25 @@ def export_sidecar(checkpoint_path: str, *, target_layers: Sequence[int],
               f"num_cog={cfg.get('num_cognitive_tokens')}  ca_heads={cfg.get('ca_num_heads')}",
               flush=True)
     return Path(out)
+
+
+def export_anchor_sidecar(checkpoint_path: str, hidden_dim: int, out: Optional[str] = None,
+                          verbose: bool = True) -> Path:
+    """GoalAnchor checkpoint → GGUF sidecar. Layers come from the checkpoint itself (v1.1
+    stores target_layers/cross_attn_layers); only hidden_dim must be supplied (base size)."""
+    import torch
+
+    ck = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
+    if ck.get("kind") != "goal_anchor":
+        raise ValueError(f"not a GoalAnchor checkpoint (kind={ck.get('kind')!r}); "
+                         "use export_sidecar / export_from_run_dir for a Doubter.")
+    tl = ck.get("target_layers")
+    cl = ck.get("cross_attn_layers")
+    if not tl or not cl:
+        raise ValueError("checkpoint has no target_layers/cross_attn_layers (need format ≥1.1)")
+    out = out or str(Path(checkpoint_path).with_name("goal_anchor_sidecar.gguf"))
+    return export_sidecar(str(checkpoint_path), target_layers=tl, cross_attn_layers=cl,
+                          hidden_dim=int(hidden_dim), out=out, verbose=verbose)
 
 
 def export_from_run_dir(run_dir: str, out: Optional[str] = None, verbose: bool = True) -> Path:

@@ -51,7 +51,7 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/Imperius/reflexion-core"
-Documentation = "https://github.com/Imperius/reflexion-core/tree/main/meta-spider-framework"
+Documentation = "https://github.com/Imperius/reflexion-core/tree/main/meta-spider-framework-dev"
 
 [tool.setuptools.packages.find]
 include = ["meta_spider*"]

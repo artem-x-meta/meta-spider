@@ -2,15 +2,29 @@
 
 ## Unreleased
 
+### Added
+- **GoalAnchor is now published** (early-stage). The goal-drift voice — a PERSISTENT latent anchor
+  encoded once from the goal/spec text, trigger-gated re-injected across generations — ships in
+  `meta-daimon` (was dev-only). Measured on Qwen2.5-14B agentic coding: diverse training over
+  constraint families gives **constraint defense +19pp** (in-domain, where the base drifts) and
+  **transfer without quality loss** on unseen constraint families (a narrow anchor cost −19pp).
+  Anchor on HF: `Imperius/meta-qwen-14b-goalanchor`. Data pipeline in `meta_loom.data`
+  (`code_spec_sessions`, `drift_sessions`).
+- **GGUF export for GoalAnchor** (`meta_deploy.export_anchor_sidecar`; `metadeploy export` autodetects
+  `kind=goal_anchor`). Sidecar carries `meta_spider.kind` + trigger metadata (trigger / trigger_k /
+  decision_layer). NB: the C++ llama.cpp runtime for the anchor's lifecycle (static anchor +
+  trigger gating) is not implemented yet — the GGUF is export-ready, the hook is a TODO.
+
 ### Changed
 - **Package split: the Meta-Daimon leg is now its own package.** `meta-core` keeps the
   abstract meta-attention MECHANISM (pipeline, hooks, encoders, gated CA, the `Modifier`
   contract, watchdog probe, checkpoint contract); the concrete injection modifiers — the
-  VOICES (currently Doubter + `DoubterConfig`) — moved to the new `meta-daimon` package
-  (named after the Socratic daimonion: counsels, doesn't rule). Back-compat:
-  `from meta_core import Doubter` / `meta_core.modifiers.Doubter` are lazily forwarded to
-  `meta_daimon` (PEP 562); the `meta_spider` umbrella re-exports everything. Install order:
-  core -> daimon -> agent -> loom. Checkpoints unaffected (configs are saved as plain dicts).
+  VOICES (Doubter, GoalAnchor + `DoubterConfig`/`GoalAnchorConfig`) — moved to the new
+  `meta-daimon` package (named after the Socratic daimonion: counsels, doesn't rule).
+  Back-compat: `from meta_core import Doubter` / `meta_core.modifiers.Doubter` are lazily
+  forwarded to `meta_daimon` (PEP 562), the `meta_spider` umbrella re-exports everything.
+  Install order: core → daimon → agent → loom. Checkpoints unaffected (configs are saved
+  as plain dicts).
 
 ### Fixed
 
@@ -28,6 +42,28 @@
   doubt phrases after answering (caught by eye in the v0.3.1 re-measure generations: 12/12
   "refusals" on the memory axis were actually answered). Corrections stay phrase-anywhere by
   design (the trained template follows a first answer mid-text).
+
+### Added
+- **`GoalAnchor` — the goal-drift Watchdog leg (behavior modifier).** Port of the archived
+  `watchdog_v2_llama1b` (v2.1, validated on Llama-3.2-1B: the latent goal anchor matches gold
+  text reminders on the forbid family WITHOUT the goal in the prompt, at ~30% fewer
+  interventions; within-family generalization 3/3 WIN). The GOAL text is encoded once into a
+  static anchor; during generation trigger-gated cross-attention re-injects it. Lifecycle
+  contrast vs the Doubter: the anchor PERSISTS across prompts (`on_pre_forward` resets only
+  the trigger). Triggers: `always` / `fixed` (every K tokens) / `learnable` (MLP probe on the
+  decision layer + cooldown). Checkpoint kind `goal_anchor` (v1.1 contract, strict layer
+  verify, learnable-trigger state included). Not to be confused with the
+  `meta_core.watchdog.Watchdog` confidence sensor (whose probe gates pointwise injection /
+  external actions). Known measured limits: no transfer to an
+  unseen drift FAMILY; training pipeline port (meta-loom stages) is the next step.
+  **Agentic mode `trigger="agent_step"` (the project's aim):** injection is OFF by default
+  and armed only for the agent-loop DECISION window — `MetaAgent(step_hooks=[anchor])` calls
+  `on_step_start`/`on_step_end` around each `policy.act` (decide-then-detach). NB: this regime is a HYPOTHESIS by
+  analogy with the Doubter's ODEX finding — v2 itself validated sparse in-generation pulses
+  (fixed-K); comparing the two regimes is part of the agentic bench, not settled. Agentic validation needs a
+  bigger base (Qwen-14B / Granite-8B) — 1B is below the agentic capability floor; plan in
+  `docs/project_notes/goal-anchor-agentic-plan.md`.
+  Tests `tests/test_goal_anchor.py` (10). Suite 164 → 174.
 
 ## v0.3.1 — arbiter-audit fixes (correctness + honest-metrics hardening)
 

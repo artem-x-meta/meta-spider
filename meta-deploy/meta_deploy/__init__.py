@@ -15,8 +15,15 @@ Deployment pipeline:
 Public Python API (export side; the C++ forward is a separate build):
   export_sidecar(checkpoint, target_layers, cross_attn_layers, hidden_dim, out)
   export_from_run_dir(run_dir, out=None)   — metaloom convention (reads run.json)
-"""
-from .export import export_from_run_dir, export_sidecar
+  export_anchor_sidecar(checkpoint, hidden_dim, out=None) — GoalAnchor (layers from ckpt)
 
-__all__ = ["export_sidecar", "export_from_run_dir"]
+GoalAnchor export: the sidecar carries `meta_spider.kind=goal_anchor` + trigger metadata
+(trigger / trigger_k / trigger_decision_layer). NB: the C++ runtime for the anchor's
+DIFFERENT lifecycle (static anchor encoded once from the goal text + trigger-gated re-injection,
+vs the Doubter's per-prompt rebuild) is not yet implemented — the GGUF is export-ready but the
+llama.cpp anchor hook is a TODO.
+"""
+from .export import export_anchor_sidecar, export_from_run_dir, export_sidecar
+
+__all__ = ["export_sidecar", "export_from_run_dir", "export_anchor_sidecar"]
 __version__ = "0.0.1"

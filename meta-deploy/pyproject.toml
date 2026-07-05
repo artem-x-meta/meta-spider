@@ -39,7 +39,7 @@ dev = ["pytest>=7.4", "scipy>=1.10"]
 
 [project.urls]
 Homepage = "https://github.com/Imperius/reflexion-core"
-Documentation = "https://github.com/Imperius/reflexion-core/tree/main/meta-spider-framework/meta-deploy"
+Documentation = "https://github.com/Imperius/reflexion-core/tree/main/meta-spider-framework-dev/meta-deploy"
 
 [tool.setuptools.packages.find]
 include = ["meta_deploy*"]

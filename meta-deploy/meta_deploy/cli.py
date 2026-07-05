@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pv = sub.add_parser("validate", help="numpy encoder spec == PyTorch (phase M2a)")
     pv.add_argument("--framework-path", default=None,
-                    help="fallback path to meta-spider-framework when meta_core is not installed")
+                    help="fallback path to meta-spider-framework-dev when meta_core is not installed")
     pv.add_argument("--checkpoint", required=True)
     pv.add_argument("--hidden-dim", type=int, default=2304)
     pv.add_argument("--num-layers", type=int, default=5)
@@ -43,19 +43,28 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Optional[list] = None) -> None:
     args = build_parser().parse_args(argv)
     if args.cmd == "export":
-        from .export import export_from_run_dir, export_sidecar
+        from .export import export_anchor_sidecar, export_from_run_dir, export_sidecar
         if args.run_dir:
             export_from_run_dir(args.run_dir, out=args.out)
         else:
-            need = [n for n, v in (("--checkpoint", args.checkpoint),
-                                   ("--target-layers", args.target_layers),
-                                   ("--cross-attn-layers", args.cross_attn_layers),
-                                   ("--hidden-dim", args.hidden_dim)) if not v]
-            if need:
-                raise SystemExit(f"without --run-dir these are required: {', '.join(need)}")
-            export_sidecar(args.checkpoint, target_layers=args.target_layers,
-                           cross_attn_layers=args.cross_attn_layers,
-                           hidden_dim=args.hidden_dim, out=args.out or "doubter_sidecar.gguf")
+            if not args.checkpoint:
+                raise SystemExit("without --run-dir, --checkpoint is required")
+            # autodetect a GoalAnchor: its checkpoint carries the layers itself, only needs hidden_dim
+            import torch
+            kind = torch.load(args.checkpoint, map_location="cpu", weights_only=False).get("kind")
+            if kind == "goal_anchor":
+                if not args.hidden_dim:
+                    raise SystemExit("GoalAnchor export needs --hidden-dim (base hidden size)")
+                export_anchor_sidecar(args.checkpoint, hidden_dim=args.hidden_dim, out=args.out)
+            else:
+                need = [n for n, v in (("--target-layers", args.target_layers),
+                                       ("--cross-attn-layers", args.cross_attn_layers),
+                                       ("--hidden-dim", args.hidden_dim)) if not v]
+                if need:
+                    raise SystemExit(f"without --run-dir these are required: {', '.join(need)}")
+                export_sidecar(args.checkpoint, target_layers=args.target_layers,
+                               cross_attn_layers=args.cross_attn_layers,
+                               hidden_dim=args.hidden_dim, out=args.out or "doubter_sidecar.gguf")
     elif args.cmd == "validate":
         from .validate import validate_encoder
         validate_encoder(args.framework_path, args.checkpoint,

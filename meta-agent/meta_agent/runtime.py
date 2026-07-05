@@ -31,10 +31,21 @@ class AgentResult:
 
 class MetaAgent:
     def __init__(self, policy: Policy, tools: Optional[ToolRegistry] = None,
-                 max_steps: int = 6):
+                 max_steps: int = 6, step_hooks: Optional[list] = None):
+        """step_hooks: objects with optional `on_step_start(step, session)` /
+        `on_step_end(step, session)` — called around each policy.act (the decision window).
+        Used by decision-point modifiers, e.g. GoalAnchor in agent_step mode arms its
+        anchor injection only for the decision emission (decide-then-detach)."""
         self.policy = policy
         self.tools = tools or ToolRegistry()
         self.max_steps = max_steps
+        self.step_hooks = list(step_hooks or [])
+
+    def _notify(self, event: str, step: int, session: "Session") -> None:
+        for h in self.step_hooks:
+            fn = getattr(h, event, None)
+            if callable(fn):
+                fn(step, session)
 
     def run(self, user_input: str, session: Optional[Session] = None) -> AgentResult:
         session = session or Session()
@@ -42,7 +53,11 @@ class MetaAgent:
         trace: list = []
 
         for step in range(1, self.max_steps + 1):
-            action = self.policy.act(session)
+            self._notify("on_step_start", step, session)
+            try:
+                action = self.policy.act(session)
+            finally:
+                self._notify("on_step_end", step, session)
 
             if action.kind == "final":
                 session.assistant(action.content)

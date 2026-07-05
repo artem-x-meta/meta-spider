@@ -11,7 +11,7 @@ Components under the **Meta-Spider** umbrella: **Meta-Core** (mechanism, depends
 nothing), **Meta-Daimon** (the voices → core), **Meta-Agent** (agents+chat → core),
 **Meta-Loom** (training+benchmarks → core, daimon, agent), **Meta-Deploy** (GGUF → core).
 
-Back-compat: `from meta_core import Doubter / DoubterConfig` still works
+Back-compat: `from meta_core import Doubter / GoalAnchor / DoubterConfig / …` still works
 when `meta-daimon` is installed (lazy PEP-562 forwarding below), but new code should
 import voices from `meta_daimon` directly.
 """
@@ -31,7 +31,8 @@ from meta_core.encoders.multi_token import MultiTokenEncoder
 from meta_core.watchdog import Watchdog, ConfidenceProbe
 
 # Voices moved to meta-daimon; forwarded lazily for back-compat (no hard/circular dep).
-_DAIMON_NAMES = ("Doubter", "DoubterConfig")
+_DAIMON_NAMES = ("Doubter", "DoubterConfig", "GoalAnchor", "GoalAnchorConfig",
+                 "BinaryTrigger", "LearnableTrigger")
 
 __all__ = [
     "MetaSpiderConfig",

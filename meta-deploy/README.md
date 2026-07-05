@@ -21,7 +21,7 @@ meta-core ──provides──> trained doubter_checkpoint.pt
 ## Install
 
 ```bash
-pip install -e meta-spider-framework/meta-deploy        # numpy + gguf (export side)
+pip install -e meta-spider-framework-dev/meta-deploy        # numpy + gguf (export side)
 # torch is only needed to read the trained .pt (usually already present with meta-core)
 ```
 

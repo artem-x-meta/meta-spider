@@ -1,6 +1,6 @@
 # Meta-Agent
 
-> Agentic runtime + chat for the **two-pass meta-attention** wrapper ([Meta-Spider](../meta-spider-framework)).
+> Agentic runtime + chat for the **two-pass meta-attention** wrapper ([Meta-Spider](../meta-spider-framework-dev)).
 > The Doubter's latent decision → a standard action vocabulary.
 
 A component of the **Meta-Spider** project (umbrella):
