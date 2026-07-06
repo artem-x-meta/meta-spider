@@ -94,16 +94,18 @@ Status (2026-07):
   chat-wrapped or hand-written goal encodes the cog from the wrong activations → the anchor barely acts.
   (This was a real driver bug, caught while chasing a phantom "Q4 weakens it" — quantization was not the
   cause; the Doubter showed quant barely matters.)
-- ✅ **Drift-defense reproduces in Q4/CPU — harness number.** A session harness (`llama-meta-anchor-session`
-  batch mode + `lab/.../llama_harness.py`, AST grading, no LLM judge) over 16 MBPP specs with erosive
-  constraints, drift session (spec at t0 → one lure turn), base vs anchor: **Δ adherence = +12.6 pp**
-  (base 0.312 → anchor 0.438 on the final, lured turn; anchor also holds t0 better, 1.0 vs 0.938). Per
-  family the anchor holds `no_print` (5/5 vs 4/5), `require_docstring` (5/9 vs 3/9), `single_function`
-  (6/9 vs 5/9); `type_hints` erodes in both. **Directionally consistent with the fp16 +19pp (v4.2)** —
-  the defense survives Q4 quantization and CPU deploy. Caveats: n=16, single seed, `func_name` excluded
-  from the metric (its rename lure is imperative → obedience not drift, and it mechanically breaks the
-  tests). Report: `docs/results/qwen-14b/goal-anchor-llamacpp-harness.md`. A cleaner headline wants passive
-  lures + more seeds — but the effect is now a measured aggregate, not an eyeball.
+- ✅ **Drift-defense reproduces in Q4/CPU — clean harness number.** A session harness
+  (`llama-meta-anchor-session` batch mode + `lab/.../llama_harness.py`, AST grading, no LLM judge) over
+  **32** MBPP drift-sessions with **passive** lures (linter/reviewer *suggestions*, no imperative rename),
+  base vs anchor on the `Q4_K_M` GGUF: **Δ adherence = +9.4 pp** (0.125 → 0.219 on the lured turn) /
+  **+10.6 pp per-constraint-instance** (34/76 → 42/76). Concentrated on the styles the base drops most:
+  `require_docstring` 2/21 → **7/21** (+24pp), `return_annotation` 5/16 → 7/16 (+12pp). Crucially
+  **`solved` stays at parity** (0.75 vs 0.72) — the anchor defends the spec without costing the solution.
+  `func_name` holds in both arms (no confound); `type_hints` erodes in both. **Directionally consistent
+  with the fp16 +19pp (v4.2)** across three measurements (fp16 +19 / Q4 imperative +12.6 post-hoc / Q4
+  passive +9.4 clean) — magnitude drops with quantization + fewer seeds, sign is stable. The defense
+  survives Q4 and CPU deploy. Caveats: n=32, single seed; `type_hints` not held. Report:
+  `docs/results/qwen-14b/goal-anchor-llamacpp-harness.md`.
 
 ### Run (anchor)
 
