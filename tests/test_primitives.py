@@ -11,7 +11,7 @@ import math
 import pytest
 import torch
 
-from meta_core import ActivationCollector, BottleneckCrossAttention, ReflexionBuffer, SelectiveEncoder, TransformerEncoder
+from meta_attention import ActivationCollector, BottleneckCrossAttention, ReflexionBuffer, SelectiveEncoder, TransformerEncoder
 
 
 # ============================================================
@@ -285,7 +285,7 @@ def test_stage_timer_collects_stages(tmp_path):
     import json
     import time as _t
 
-    from meta_core import StageTimer
+    from meta_attention import StageTimer
 
     timer = StageTimer(context={"dtype": "float32"})
     with timer.stage("alpha"):
@@ -312,7 +312,7 @@ def test_stage_timer_survives_exception():
     """The stage is recorded even when an exception is raised inside."""
     import pytest as _pytest
 
-    from meta_core import StageTimer
+    from meta_attention import StageTimer
 
     timer = StageTimer()
     with _pytest.raises(RuntimeError):

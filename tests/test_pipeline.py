@@ -6,17 +6,18 @@ Use FakeLM + FakeTokenizer from conftest.py — without HF transformers.
 import pytest
 import torch
 
-from meta_core import Doubter, DoubterConfig, MetaSpiderConfig, MetaSpiderPipeline
+from meta_attention import MetaAttentionConfig, MetaAttentionPipeline
+from daimon_voices import Doubter, DoubterConfig
 
 
 # ============================================================
-# MetaSpiderConfig.resolve_defaults
+# MetaAttentionConfig.resolve_defaults
 # ============================================================
 
 
 def test_config_resolve_defaults_auto_fills():
     """resolve_defaults fills None fields from the base model's dimensions."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu")
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu")
     assert cfg.hidden_dim is None
     assert cfg.num_layers is None
     assert cfg.target_layers is None
@@ -31,7 +32,7 @@ def test_config_resolve_defaults_auto_fills():
 
 def test_config_resolve_defaults_preserves_user_set():
     """If the user set target_layers — resolve_defaults does not overwrite it."""
-    cfg = MetaSpiderConfig(
+    cfg = MetaAttentionConfig(
         model_name="fake/model", device="cpu",
         target_layers=[1, 3],
     )
@@ -42,7 +43,7 @@ def test_config_resolve_defaults_preserves_user_set():
 
 def test_config_resolve_defaults_hidden_mismatch_raises():
     """A provided hidden_dim ≠ base → ValueError."""
-    cfg = MetaSpiderConfig(model_name="fake/model", hidden_dim=128, device="cpu")
+    cfg = MetaAttentionConfig(model_name="fake/model", hidden_dim=128, device="cpu")
     with pytest.raises(ValueError, match="hidden_dim"):
         cfg.resolve_defaults(base_num_layers=4, base_hidden_dim=64)
 
@@ -54,7 +55,7 @@ def test_config_resolve_defaults_hidden_mismatch_raises():
 
 def test_config_quantization_defaults():
     """By default compression is off, checkpointing is off."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu")
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu")
     assert cfg.quantization is None
     assert cfg.double_quant is True
     assert cfg.gradient_checkpointing is False
@@ -63,9 +64,9 @@ def test_config_quantization_defaults():
 def test_build_quantization_config_unknown_raises():
     """An unknown compression level → ValueError (if bnb is installed) or
     ImportError with a clear message (if not)."""
-    from meta_core.pipeline import _build_quantization_config
+    from meta_attention.pipeline import _build_quantization_config
 
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu")
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu")
     cfg.quantization = "int3"  # no such level exists
     with pytest.raises((ValueError, ImportError)):
         _build_quantization_config(cfg, torch.float16)
@@ -76,10 +77,10 @@ def test_gradient_checkpointing_flag_applied(fake_lm, fake_tokenizer):
     calls = []
     fake_lm.gradient_checkpointing_enable = lambda *a, **k: calls.append(1)
 
-    cfg = MetaSpiderConfig(
+    cfg = MetaAttentionConfig(
         model_name="fake/model", device="cpu", gradient_checkpointing=True,
     )
-    MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     assert calls, "gradient_checkpointing_enable was not called"
 
 
@@ -111,8 +112,8 @@ def test_infer_dtype_skips_quantized_params(fake_lm, fake_tokenizer):
 
 def test_pipeline_from_pretrained_with_injected_model(fake_lm, fake_tokenizer):
     """from_pretrained(model=fake_lm) bypasses HF, correctly sets up collector + freeze."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
 
     assert pipeline.config.hidden_dim == 64
     assert pipeline.config.num_layers == 4
@@ -129,8 +130,8 @@ def test_pipeline_from_pretrained_with_injected_model(fake_lm, fake_tokenizer):
 
 def test_doubter_on_attach_creates_obvyazka(fake_lm, fake_tokenizer):
     """on_attach creates encoder + ca_modules + buffer + registers CA hooks."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
 
     doubter_cfg = DoubterConfig(
         encoder_type="selective",
@@ -151,8 +152,8 @@ def test_doubter_on_attach_creates_obvyazka(fake_lm, fake_tokenizer):
 
 def test_doubter_detach_removes_hooks(fake_lm, fake_tokenizer):
     """detach removes the CA hooks."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
 
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
@@ -161,13 +162,13 @@ def test_doubter_detach_removes_hooks(fake_lm, fake_tokenizer):
     pipeline.attach(doubter)
     pipeline.detach(doubter)
     assert len(doubter._ca_hook_handles) == 0
-    assert doubter not in pipeline.modifiers
+    assert doubter not in pipeline.injectors
 
 
 def test_doubter_get_trainable_parameters(fake_lm, fake_tokenizer):
     """get_trainable_parameters returns encoder + 4 CA modules."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -187,8 +188,8 @@ def test_doubter_get_trainable_parameters(fake_lm, fake_tokenizer):
 
 def test_pipeline_pass1_fills_doubter_buffer(fake_lm, fake_tokenizer):
     """Pass 1 → ActivationCollector captures activations → Doubter.on_post_forward → buffer.is_filled."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -206,8 +207,8 @@ def test_pipeline_pass1_fills_doubter_buffer(fake_lm, fake_tokenizer):
 
 def test_pipeline_full_generate(fake_lm, fake_tokenizer):
     """Full generate() → returns decoded text."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -226,19 +227,19 @@ def test_pipeline_full_generate(fake_lm, fake_tokenizer):
 
 
 def test_pipeline_detach_all_clean(fake_lm, fake_tokenizer):
-    """detach_all disables all modifiers and returns a snapshot."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    """detach_all disables all voices and returns a snapshot."""
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     d1 = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
     ))
     pipeline.attach(d1)
-    assert len(pipeline.modifiers) == 1
+    assert len(pipeline.injectors) == 1
 
     snapshot = pipeline.detach_all()
     assert len(snapshot) == 1
-    assert len(pipeline.modifiers) == 0
+    assert len(pipeline.injectors) == 0
     assert len(d1._ca_hook_handles) == 0
 
 
@@ -249,8 +250,8 @@ def test_pipeline_detach_all_clean(fake_lm, fake_tokenizer):
 
 def test_doubter_checkpoint_round_trip(tmp_path, fake_lm, fake_tokenizer):
     """save_checkpoint → from_checkpoint → on_attach → weights restored."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline_a = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline_a = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter_cfg = DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -264,9 +265,9 @@ def test_doubter_checkpoint_round_trip(tmp_path, fake_lm, fake_tokenizer):
     assert path.exists()
 
     # Load + attach into a new pipeline
-    cfg_b = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
+    cfg_b = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
     fake_lm_b = type(fake_lm)(hidden_dim=64, num_layers=4)
-    pipeline_b = MetaSpiderPipeline.from_pretrained(cfg_b, model=fake_lm_b, tokenizer=fake_tokenizer)
+    pipeline_b = MetaAttentionPipeline.from_pretrained(cfg_b, model=fake_lm_b, tokenizer=fake_tokenizer)
     doubter_b = Doubter.from_checkpoint(str(path))
     pipeline_b.attach(doubter_b)
 
@@ -288,10 +289,10 @@ def test_doubter_checkpoint_round_trip(tmp_path, fake_lm, fake_tokenizer):
 
 def test_doubter_with_transformer_encoder(fake_lm, fake_tokenizer):
     """encoder_type='transformer' creates a TransformerEncoder."""
-    from meta_core import TransformerEncoder
+    from meta_attention import TransformerEncoder
 
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="transformer",
         transformer_encoder_dim=32,
@@ -312,8 +313,8 @@ def test_doubter_ca_gate_map_after_attach(fake_lm, fake_tokenizer):
     """get_ca_gate_map returns the gate value for each CA layer (init ≈ tanh(0.3))."""
     import math
 
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -338,8 +339,8 @@ def test_reattach_preserves_trained_weights(fake_lm, fake_tokenizer):
     Canary v9: on_attach unconditionally recreated encoder+CA → the modified run
     used random weights → Δ=0.0000 across all metrics.
     """
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu")
-    pipe = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu")
+    pipe = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(encoder_type="selective"))
     pipe.attach(doubter)
 
@@ -353,9 +354,9 @@ def test_reattach_preserves_trained_weights(fake_lm, fake_tokenizer):
 
     # BaselineComparison cycle: detach → re-attach
     doubter.on_detach()
-    pipe.modifiers.remove(doubter)
+    pipe.injectors.remove(doubter)
     doubter.on_attach(pipe)
-    pipe.modifiers.append(doubter)
+    pipe.injectors.append(doubter)
 
     assert doubter.ca_modules["0"].gate.item() == pytest.approx(0.777), \
         "CA weights recreated on re-attach!"
@@ -366,11 +367,11 @@ def test_reattach_preserves_trained_weights(fake_lm, fake_tokenizer):
 
 
 def test_baseline_comparison_uses_trained_weights(fake_lm, fake_tokenizer):
-    """Full BaselineComparison.run: afterwards the modifier weights are the same."""
-    from meta_loom import BaselineComparison, BenchmarkTask, QABenchmark
+    """Full BaselineComparison.run: afterwards the voice weights are the same."""
+    from daimon_loom import BaselineComparison, BenchmarkTask, QABenchmark
 
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu")
-    pipe = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu")
+    pipe = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(encoder_type="selective"))
     pipe.attach(doubter)
 
@@ -397,7 +398,7 @@ def test_baseline_comparison_uses_trained_weights(fake_lm, fake_tokenizer):
 
 def test_layer_preset_all_and_late():
     """The 'all'/'late' presets resolve from the model depth."""
-    cfg = MetaSpiderConfig(
+    cfg = MetaAttentionConfig(
         model_name="fake/model", device="cpu",
         target_layers="all", cross_attn_layers="late",
     )
@@ -405,7 +406,7 @@ def test_layer_preset_all_and_late():
     assert cfg.target_layers == list(range(26))
     assert cfg.cross_attn_layers == list(range(17, 26))  # top third of 26 layers
 
-    cfg32 = MetaSpiderConfig(
+    cfg32 = MetaAttentionConfig(
         model_name="fake/model", device="cpu", cross_attn_layers="late",
     )
     cfg32.resolve_defaults(base_num_layers=32, base_hidden_dim=64)
@@ -413,7 +414,7 @@ def test_layer_preset_all_and_late():
 
 
 def test_layer_preset_unknown_raises():
-    cfg = MetaSpiderConfig(
+    cfg = MetaAttentionConfig(
         model_name="fake/model", device="cpu", cross_attn_layers="early",
     )
     with pytest.raises(ValueError, match="early"):
@@ -422,10 +423,10 @@ def test_layer_preset_unknown_raises():
 
 def test_layer_preset_late_pipeline_attach(fake_lm, fake_tokenizer):
     """Doubter on the 'late' preset attaches CA only to the late layers."""
-    cfg = MetaSpiderConfig(
+    cfg = MetaAttentionConfig(
         model_name="fake/model", device="cpu", cross_attn_layers="late",
     )
-    pipe = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    pipe = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(encoder_type="selective"))
     pipe.attach(doubter)
     # FakeLM: 4 layers → late = top third = [2, 3]
@@ -440,7 +441,7 @@ def test_layer_preset_late_pipeline_attach(fake_lm, fake_tokenizer):
 def test_introspection_cache_refresh_logic():
     """IntrospectionCache: first call refresh, min/max interval, threshold."""
     import torch
-    from meta_core import IntrospectionCache
+    from meta_attention import IntrospectionCache
 
     c = IntrospectionCache(threshold=0.5, min_interval=3, max_interval=10)
     a = [torch.ones(4)]
@@ -459,8 +460,8 @@ def test_introspection_cache_refresh_logic():
 
 def test_generate_dynamic_runs(fake_lm, fake_tokenizer):
     """pipeline.generate(dynamic_refresh=True) runs end-to-end on FakeLM + Doubter."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipe = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipe = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     pipe.attach(Doubter(DoubterConfig(encoder_type="selective")))
     out = pipe.generate("Solve step by step", max_new_tokens=12, dynamic_refresh=True,
                         refresh_min_interval=2, refresh_max_interval=6)

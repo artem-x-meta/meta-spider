@@ -5,8 +5,8 @@ collect→train wiring with an INJECTED tiny mix, so the whole factory path runs
 """
 import json
 
-from meta_loom.cli import build_universal as bu
-from meta_loom.data import agentic_mix as AM
+from daimon_loom.cli import build_universal as bu
+from daimon_loom.data import agentic_mix as AM
 from tests.test_cli import _fake_pipe
 
 
@@ -82,8 +82,8 @@ def _tiny_suite():
 
 
 def test_eval_suite_logprob_base_and_doubter(fake_lm_factory):
-    from meta_core import Doubter, DoubterConfig
-    from meta_loom.evaluation import agentic_suite as A
+    from daimon_voices import Doubter, DoubterConfig
+    from daimon_loom.evaluation import agentic_suite as A
 
     pipe = _fake_pipe(fake_lm_factory)
     suite = _tiny_suite()

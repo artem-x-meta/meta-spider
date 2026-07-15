@@ -7,13 +7,13 @@ import json
 import pytest
 import torch
 
-from meta_core import MetaSpiderConfig, MetaSpiderPipeline
-from meta_loom import ActivationDatasetCollector
-from meta_loom.cli import _common as C
-from meta_loom.cli import collect as collect_mod
-from meta_loom.cli import eval as eval_mod
-from meta_loom.cli import main as main_mod
-from meta_loom.cli import train as train_mod
+from meta_attention import MetaAttentionConfig, MetaAttentionPipeline
+from daimon_loom import ActivationDatasetCollector
+from daimon_loom.cli import _common as C
+from daimon_loom.cli import collect as collect_mod
+from daimon_loom.cli import eval as eval_mod
+from daimon_loom.cli import main as main_mod
+from daimon_loom.cli import train as train_mod
 
 
 # ───────────────────────── _common ─────────────────────────
@@ -80,8 +80,8 @@ def test_dispatcher_requires_stage():
 # ───────────────────────── collector config-key ─────────────────────────
 
 def test_collector_save_load_config(tmp_path, fake_lm, fake_tokenizer):
-    cfg = MetaSpiderConfig(model_name="fake", device="cpu", dtype="float32")
-    pipe = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake", device="cpu", dtype="float32")
+    pipe = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     samples = ActivationDatasetCollector(pipe, max_new_tokens=2).collect(
         ["hi"], ["world"], verbose=False)
     p = tmp_path / "ds.pt"
@@ -98,11 +98,11 @@ def test_collector_save_load_config(tmp_path, fake_lm, fake_tokenizer):
 def _fake_pipe(fake_lm_factory):
     m = fake_lm_factory(hidden_dim=64, num_layers=4)
     from tests.conftest import FakeTokenizer  # noqa
-    cfg = MetaSpiderConfig(
+    cfg = MetaAttentionConfig(
         model_name="fake", device="cpu", dtype="float32",
         target_layers=[0, 1, 2, 3], cross_attn_layers=[0, 1, 2, 3],
     )
-    return MetaSpiderPipeline.from_pretrained(cfg, model=m, tokenizer=FakeTokenizer())
+    return MetaAttentionPipeline.from_pretrained(cfg, model=m, tokenizer=FakeTokenizer())
 
 
 def _manifest():
@@ -149,7 +149,7 @@ def test_chain_collect_train_eval(tmp_path, fake_lm_factory):
 # ───────── thinking toggle + MCQ answer instruction (fix for null on verbose/thinking) ─────────
 
 def test_resolve_prompt_flags():
-    from meta_loom.cli.collect import MCQ_SUFFIX, resolve_prompt_flags
+    from daimon_loom.cli.collect import MCQ_SUFFIX, resolve_prompt_flags
     # default — touch nothing
     assert resolve_prompt_flags(False, False, None) == (None, None)
     # --no-think without a suffix
@@ -206,8 +206,8 @@ def test_parse_max_memory():
 
 
 def test_config_device_auto_resolves(fake_lm, fake_tokenizer):
-    cfg = MetaSpiderConfig(model_name="fake", dtype="float32")  # device defaults to "auto"
+    cfg = MetaAttentionConfig(model_name="fake", dtype="float32")  # device defaults to "auto"
     assert cfg.device == "auto"
     assert hasattr(cfg, "max_memory") and cfg.max_memory is None
-    MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     assert cfg.device in ("cpu", "cuda")  # resolved in from_pretrained

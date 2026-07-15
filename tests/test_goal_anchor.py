@@ -6,10 +6,8 @@ the anchor is built from the GOAL text and PERSISTS across generations.
 import pytest
 import torch
 
-from meta_core import (
-    BinaryTrigger, GoalAnchor, GoalAnchorConfig, LearnableTrigger,
-    MetaSpiderConfig, MetaSpiderPipeline,
-)
+from meta_attention import MetaAttentionConfig, MetaAttentionPipeline
+from daimon_voices import BinaryTrigger, GoalAnchor, GoalAnchorConfig, LearnableTrigger
 from tests.test_cli import _fake_pipe
 
 
@@ -101,7 +99,7 @@ def test_always_anchor_ignores_decision_layer_depth(fake_lm_factory):
     a = _mini_anchor(trigger="always")
     a.config.trigger_decision_layer = 99        # irrelevant for always
     pipe.attach(a)                               # must NOT raise
-    assert a in pipe.modifiers
+    assert a in pipe.injectors
 
 
 # ───────────────────────── checkpoint contract ─────────────────────────
@@ -124,7 +122,7 @@ def test_checkpoint_roundtrip_and_kind_guard(tmp_path, fake_lm_factory):
     assert isinstance(a2.trigger, LearnableTrigger)
 
     # a Doubter checkpoint must be rejected loudly
-    from meta_core import Doubter, DoubterConfig
+    from daimon_voices import Doubter, DoubterConfig
     d = Doubter(DoubterConfig(encoder_type="selective", encoder_bottleneck=16,
                               ca_bottleneck_dim=16, ca_num_heads=2))
     pipe3 = _fake_pipe(fake_lm_factory)
@@ -144,9 +142,9 @@ def test_checkpoint_layer_mismatch_raises(tmp_path, fake_lm_factory):
 
     from tests.conftest import FakeTokenizer
     m = fake_lm_factory(hidden_dim=64, num_layers=4)
-    cfg = MetaSpiderConfig(model_name="fake", device="cpu", dtype="float32",
+    cfg = MetaAttentionConfig(model_name="fake", device="cpu", dtype="float32",
                            target_layers=[0, 1, 2, 3], cross_attn_layers=[0, 1])
-    pipe2 = MetaSpiderPipeline.from_pretrained(cfg, model=m, tokenizer=FakeTokenizer())
+    pipe2 = MetaAttentionPipeline.from_pretrained(cfg, model=m, tokenizer=FakeTokenizer())
     a2 = GoalAnchor.from_checkpoint(path)
     with pytest.raises(RuntimeError, match="mismatch"):
         pipe2.attach(a2)
@@ -185,8 +183,8 @@ def test_agent_step_mode_off_until_armed(fake_lm_factory):
 
 def test_metaagent_step_hooks_arm_disarm(fake_lm_factory):
     """MetaAgent arms the anchor exactly around policy.act (the decision window)."""
-    from meta_agent import MetaAgent
-    from meta_agent.action import AgentAction
+    from daimon_agent import MetaAgent
+    from daimon_agent.action import AgentAction
 
     pipe = _fake_pipe(fake_lm_factory)
     a = _mini_anchor(trigger="agent_step")

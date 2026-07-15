@@ -7,13 +7,14 @@ import json
 import pytest
 import torch
 
-from meta_core import Doubter, DoubterConfig, MetaSpiderConfig, MetaSpiderPipeline
-from meta_loom import BaselineComparison, BenchmarkRunner, BenchmarkTask, ComparisonReport, EvalHarness, OpenRouterJudge, QABenchmark, TaskResult
-from meta_loom.evaluation.harness import (
+from meta_attention import MetaAttentionConfig, MetaAttentionPipeline
+from daimon_voices import Doubter, DoubterConfig
+from daimon_loom import BaselineComparison, BenchmarkRunner, BenchmarkTask, ComparisonReport, EvalHarness, OpenRouterJudge, QABenchmark, TaskResult
+from daimon_loom.evaluation.harness import (
     classify_action,
     compute_metrics,
 )
-from meta_loom.evaluation.comparison import (
+from daimon_loom.evaluation.comparison import (
     _mcnemar_test,
     _paired_t_test,
 )
@@ -109,8 +110,8 @@ def test_refusal_precision_honest_with_oracle():
 
 def test_eval_harness_run(fake_lm, fake_tokenizer):
     """EvalHarness.run runs the pipeline and returns EvalResults."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     harness = EvalHarness(pipeline, max_new_tokens=3)
     results = harness.run(
         questions=["What is 2+2?", "Capital of France?"],
@@ -173,8 +174,8 @@ def test_qa_benchmark_from_jsonl(tmp_path):
 
 
 def test_benchmark_runner_qa(fake_lm, fake_tokenizer):
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     tasks = [
         BenchmarkTask(task_id="t1", prompt="Hi", expected_answer="hi"),
         BenchmarkTask(task_id="t2", prompt="Hello", expected_answer="world"),
@@ -188,16 +189,16 @@ def test_benchmark_runner_qa(fake_lm, fake_tokenizer):
 
 
 # ============================================================
-# AgentComparison (agentic eval — delegates to Meta-Agent)
+# AgentComparison (agentic eval — delegates to daimon-agent)
 # ============================================================
 
 
 def test_agent_comparison_native_loop():
-    """AgentComparison runs the loop through Meta-Agent + the native tool format (NO GPU):
+    """AgentComparison runs the loop through daimon-agent + the native tool format (NO GPU):
     a fake pipeline returns scripted output (1 tool_call → final), the tool is actually called,
     the grade is objective. Verifies the Loom→Agent seam end-to-end."""
-    from meta_loom.evaluation.agentic import AgentComparison, AgentTask
-    from meta_agent import Tool, ToolRegistry
+    from daimon_loom.evaluation.agentic import AgentComparison, AgentTask
+    from daimon_agent import Tool, ToolRegistry
 
     class FakeTok:
         def apply_chat_template(self, messages, tools=None, tokenize=False,
@@ -265,9 +266,9 @@ def test_paired_t_clear_diff():
 
 
 def test_baseline_comparison_e2e(fake_lm, fake_tokenizer):
-    """BaselineComparison runs with/without the modifier and returns a report."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    """BaselineComparison runs with/without the voice and returns a report."""
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -286,17 +287,17 @@ def test_baseline_comparison_e2e(fake_lm, fake_tokenizer):
     assert report.n_tasks == 3
     assert len(report.base_results) == 3
     assert len(report.modified_results) == 3
-    assert report.modifier_names == ["doubter"]
+    assert report.voice_names == ["doubter"]
     assert "overall_accuracy" in report.base_metrics
     assert "overall_accuracy" in report.modified_metrics
-    # After the run the Modifier should be re-attached
-    assert doubter in pipeline.modifiers
+    # After the run the Voice should be re-attached
+    assert doubter in pipeline.injectors
 
 
 def test_baseline_comparison_summary_str(fake_lm, fake_tokenizer):
     """summary() returns formatted text."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -314,8 +315,8 @@ def test_baseline_comparison_summary_str(fake_lm, fake_tokenizer):
 
 def test_baseline_comparison_save_json(tmp_path, fake_lm, fake_tokenizer):
     """save_json creates valid JSON."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -335,8 +336,8 @@ def test_baseline_comparison_save_json(tmp_path, fake_lm, fake_tokenizer):
 
 def test_baseline_comparison_refusal_breakdown(fake_lm, fake_tokenizer):
     """refusal_breakdown returns a confusion matrix."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -359,7 +360,7 @@ def test_openrouter_judge_no_api_key_raises(monkeypatch):
     """If there is neither an env var nor a .env — RuntimeError."""
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     # Mock _find_env_file so it doesn't look for a real .env
-    import meta_loom.evaluation.llm_judge as mod
+    import daimon_loom.evaluation.llm_judge as mod
     monkeypatch.setattr(mod, "_find_env_file", lambda: None)
     with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
         OpenRouterJudge()

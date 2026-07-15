@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from meta_loom import cloud
+from daimon_loom import cloud
 
 
 class FakeVastClient:

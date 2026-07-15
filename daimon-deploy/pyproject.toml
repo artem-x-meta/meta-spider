@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daimon-deploy"
+version = "0.4.0"
+description = "Train in PyTorch, deploy in llama.cpp: export a Daimon Doubter (encoder + BottleneckCA) to a GGUF sidecar + ggml/C++ forward for CPU/Metal/edge inference."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Reflexion Core contributors" },
+]
+keywords = ["llm", "llama.cpp", "ggml", "gguf", "meta-attention", "deployment", "quantization"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+# The export side is lightweight: numpy + gguf-writer. torch is only needed to read the .pt
+# of the trained sidecar (comes with the meta-attention library). The C++ forward (ggml) lives in the meta-attention library (cpp/).
+dependencies = [
+    "numpy>=1.24",
+    "gguf>=0.9",
+    "meta-attention>=0.1",
+]
+
+# CLI: `metadeploy export` (checkpoint/run-dir → GGUF sidecar), `metadeploy validate` (numpy↔torch).
+[project.scripts]
+metadeploy = "daimon_deploy.cli:main"
+
+[project.optional-dependencies]
+# torch — read the trained checkpoint.pt (load_state); usually already present with the meta-attention library.
+torch = ["torch>=2.1"]
+dev = ["pytest>=7.4", "scipy>=1.10"]
+
+[project.urls]
+Homepage = "https://github.com/Imperius/reflexion-core"
+Documentation = "https://github.com/Imperius/reflexion-core/tree/main/daimon-framework-dev/daimon-deploy"
+
+[tool.setuptools.packages.find]
+include = ["daimon_deploy*"]
+exclude = ["tests*", "cpp*", "results*"]

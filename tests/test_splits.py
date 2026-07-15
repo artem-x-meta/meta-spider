@@ -1,7 +1,7 @@
-"""Tests for the train/val/test split + leakage guard (meta_loom.data.splits)."""
+"""Tests for the train/val/test split + leakage guard (daimon_loom.data.splits)."""
 import pytest
 
-from meta_loom.data import split_samples, assert_disjoint_from
+from daimon_loom.data import split_samples, assert_disjoint_from
 
 
 def _samples(n, prefix="q"):
@@ -46,7 +46,7 @@ def test_assert_disjoint_from():
 
 
 def test_works_with_dataclass_samples():
-    from meta_loom.training.collector import DatasetSample
+    from daimon_loom.training.collector import DatasetSample
     s = [DatasetSample(input_text=f"q{i}", ground_truth="A", activations={}) for i in range(10)]
     tr, va, te = split_samples(s, 6, 2, 2)
     assert len(tr) == 6 and len(te) == 2

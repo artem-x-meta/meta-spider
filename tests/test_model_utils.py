@@ -4,7 +4,7 @@ structures (standard, GPT-2, nested multimodal, config fallback)."""
 import pytest
 import torch.nn as nn
 
-from meta_core.model_utils import find_decoder_layers, infer_hidden_dim, infer_num_layers
+from meta_attention.model_utils import find_decoder_layers, infer_hidden_dim, infer_num_layers
 
 
 def _layers(n=4):

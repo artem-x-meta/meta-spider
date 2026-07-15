@@ -1,0 +1,36 @@
+{
+  "rows": [
+    {
+      "quant": "HF",
+      "refusal_precision": 0.9493,
+      "selective_accuracy": 0.652,
+      "refusal_rate": 0.592
+    },
+    {
+      "quant": "Q8_0",
+      "refusal_precision": 0.9761,
+      "selective_accuracy": 0.6667,
+      "refusal_rate": 0.586
+    },
+    {
+      "quant": "Q4_K_M",
+      "refusal_precision": 0.9763,
+      "selective_accuracy": 0.6927,
+      "refusal_rate": 0.59
+    },
+    {
+      "quant": "Q2_K",
+      "refusal_precision": 0.9739,
+      "selective_accuracy": 0.7409,
+      "refusal_rate": 0.614
+    }
+  ],
+  "verdict": {
+    "gonogo": {
+      "quant": "Q4_K_M",
+      "threshold": 0.9,
+      "q4_precision": 0.9763,
+      "passed": true
+    }
+  }
+}

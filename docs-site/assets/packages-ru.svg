@@ -7,29 +7,29 @@
 
   <rect x="0.5" y="0.5" width="899" height="559" rx="14" fill="#11141b" stroke="#262b37"/>
 
-  <text x="40" y="44" fill="#cfd6e2" font-size="13.5" font-weight="700">meta-spider — пять pip-пакетов: механизм, голоса и три независимых потребителя</text>
+  <text x="40" y="44" fill="#cfd6e2" font-size="13.5" font-weight="700">daimon — механизм meta-attention (отдельная библиотека), голоса и три независимых потребителя</text>
 
   <!-- ===== consumers ===== -->
-  <!-- meta-loom -->
+  <!-- daimon-loom -->
   <rect x="40" y="74" width="257" height="140" rx="10" fill="#211c12" stroke="#f0b86e"/>
-  <text x="58" y="104" fill="#f0b86e" font-size="14.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">meta-loom</text>
+  <text x="58" y="104" fill="#f0b86e" font-size="14.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">daimon-loom</text>
   <text x="58" y="123" fill="#cfd6e2" font-size="11" font-weight="600">обучение и оценка</text>
   <text x="58" y="146" fill="#9aa3b2" font-size="10.3">собрать активации, обучить голоса</text>
   <text x="58" y="161" fill="#9aa3b2" font-size="10.3">(backprop сквозь замороженную базу),</text>
   <text x="58" y="176" fill="#9aa3b2" font-size="10.3">честно измерить пользу.</text>
   <text x="58" y="196" fill="#9aa3b2" font-size="10.3">CLI metaloom + фабрика обвязок</text>
 
-  <!-- meta-agent -->
+  <!-- daimon-agent -->
   <rect x="321" y="74" width="257" height="140" rx="10" fill="#16241f" stroke="#7ee0c0"/>
-  <text x="339" y="104" fill="#7ee0c0" font-size="14.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">meta-agent</text>
+  <text x="339" y="104" fill="#7ee0c0" font-size="14.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">daimon-agent</text>
   <text x="339" y="123" fill="#cfd6e2" font-size="11" font-weight="600">агентный рантайм и чат</text>
   <text x="339" y="146" fill="#9aa3b2" font-size="10.3">обвязка в агентной петле</text>
   <text x="339" y="161" fill="#9aa3b2" font-size="10.3">с инструментами и историей;</text>
   <text x="339" y="176" fill="#9aa3b2" font-size="10.3">нативный tool-use для instruct-моделей</text>
 
-  <!-- meta-deploy -->
+  <!-- daimon-deploy -->
   <rect x="602" y="74" width="258" height="140" rx="10" fill="#1d1726" stroke="#b496f0"/>
-  <text x="620" y="104" fill="#b496f0" font-size="14.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">meta-deploy</text>
+  <text x="620" y="104" fill="#b496f0" font-size="14.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">daimon-deploy</text>
   <text x="620" y="123" fill="#cfd6e2" font-size="11" font-weight="600">деплой в llama.cpp</text>
   <text x="620" y="146" fill="#9aa3b2" font-size="10.3">экспорт в GGUF-сайдкар +</text>
   <text x="620" y="161" fill="#9aa3b2" font-size="10.3">ggml/C++ forward → калиброванный отказ</text>
@@ -39,12 +39,12 @@
   <path d="M297,144 L319,144" stroke="#6e7688" stroke-width="1.4" fill="none" stroke-dasharray="3 3" marker-end="url(#arr)"/>
   <text x="309" y="136" fill="#6e7688" font-size="8.5" text-anchor="middle">зовёт</text>
 
-  <!-- ===== the voices: meta-daimon ===== -->
+  <!-- ===== the voices: daimon-voices ===== -->
   <rect x="40" y="252" width="420" height="98" rx="10" fill="#241a16" stroke="#d9776c" stroke-width="1.8"/>
-  <text x="60" y="282" fill="#d9776c" font-size="14.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">meta-daimon</text>
+  <text x="60" y="282" fill="#d9776c" font-size="14.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">daimon-voices</text>
   <text x="185" y="282" fill="#cfd6e2" font-size="11.5" font-weight="600">· ГОЛОСА (инъекционные модификаторы)</text>
   <text x="60" y="305" fill="#9aa3b2" font-size="10.3">внутренние советники замороженной модели (сократовский даймоний: советует, не правит):</text>
-  <text x="60" y="321" fill="#9aa3b2" font-size="10.3">Скептик-Doubter (сомнение) · GoalAnchor (цель; на валидации) · у каждого своя ручка gain</text>
+  <text x="60" y="321" fill="#9aa3b2" font-size="10.3">Скептик-Doubter (сомнение) · GoalAnchor (цель) · ChronoAnchor (память×цель) · у каждого своя ручка gain</text>
   <text x="60" y="337" fill="#9aa3b2" font-size="10.3">голоса СУММИРУЮТСЯ на residual — микшерный пульт над одним механизмом</text>
 
   <!-- edges: loom → daimon; daimon → core; agent/deploy → core -->
@@ -59,13 +59,13 @@
 
   <!-- ===== core (foundation) ===== -->
   <rect x="40" y="394" width="820" height="108" rx="10" fill="#182030" stroke="#6ea8fe" stroke-width="1.8"/>
-  <text x="60" y="426" fill="#6ea8fe" font-size="15.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">meta-core</text>
-  <text x="168" y="426" fill="#cfd6e2" font-size="12.5" font-weight="600">· МЕХАНИЗМ мета-внимания</text>
+  <text x="60" y="426" fill="#6ea8fe" font-size="15.5" font-weight="700" font-family="ui-monospace, Consolas, monospace">meta-attention</text>
+  <text x="168" y="426" fill="#cfd6e2" font-size="12.5" font-weight="600">· МЕХАНИЗМ (отдельная библиотека, Apache-2.0)</text>
   <text x="60" y="450" fill="#9aa3b2" font-size="10.5">двухпроходный механизм: замороженная база + хуки · когнитивные энкодеры · gated cross-attention ·</text>
-  <text x="60" y="468" fill="#9aa3b2" font-size="10.5">контракт Modifier · read-проба Watchdog · контракт чекпоинта · не зависит ни от чего</text>
+  <text x="60" y="468" fill="#9aa3b2" font-size="10.5">протокол Injector · контракт чекпоинта · C++/ggml-нога с llama.cpp · не зависит ни от чего</text>
   <rect x="580" y="422" width="264" height="26" rx="7" fill="#16241f" stroke="#7ee0c0"/>
-  <text x="712" y="439" fill="#7ee0c0" font-size="10.5" font-weight="600" text-anchor="middle">прод-инференс = core + daimon</text>
+  <text x="712" y="439" fill="#7ee0c0" font-size="10.5" font-weight="600" text-anchor="middle">прод-инференс = библиотека + голоса</text>
 
   <!-- note -->
-  <text x="450" y="532" fill="#6e7688" font-size="11.5" text-anchor="middle" font-style="italic">один механизм (core), одна семья голосов поверх него (daimon), три независимых потребителя</text>
+  <text x="450" y="532" fill="#6e7688" font-size="11.5" text-anchor="middle" font-style="italic">один механизм (библиотека meta-attention), одна семья голосов поверх него, три независимых потребителя</text>
 </svg>

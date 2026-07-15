@@ -7,8 +7,9 @@ import random
 import pytest
 import torch
 
-from meta_core import Doubter, DoubterConfig, MetaSpiderConfig, MetaSpiderPipeline
-from meta_loom import ActivationDatasetCollector, DatasetSample, Trainer, TrainerConfig, build_correction_target, build_target_by_action, make_labels_with_prompt_mask
+from meta_attention import MetaAttentionConfig, MetaAttentionPipeline
+from daimon_voices import Doubter, DoubterConfig
+from daimon_loom import ActivationDatasetCollector, DatasetSample, Trainer, TrainerConfig, build_correction_target, build_target_by_action, make_labels_with_prompt_mask
 
 
 # ============================================================
@@ -48,7 +49,7 @@ def test_build_correction_target_refuse():
 
 def test_build_agentic_target_code_when_confident():
     """pass1_correct=True → 'code' action: start a code block, NOT a tool call."""
-    from meta_loom import build_agentic_target
+    from daimon_loom import build_agentic_target
 
     target, action = build_agentic_target("how to parse a date", pass1_correct=True)
     assert action == "code"
@@ -61,7 +62,7 @@ def test_build_agentic_target_lookup_when_uncertain_is_parseable():
     import json
     import re
 
-    from meta_loom import build_agentic_target
+    from daimon_loom import build_agentic_target
 
     target, action = build_agentic_target("strftime milliseconds format", pass1_correct=False)
     assert action == "lookup"
@@ -78,7 +79,7 @@ def test_build_agentic_target_lookup_query_is_json_safe():
     import json
     import re
 
-    from meta_loom import build_agentic_target
+    from daimon_loom import build_agentic_target
 
     target, _ = build_agentic_target('save to "C:\\tmp"\nwith json', pass1_correct=False)
     m = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", target, re.S)
@@ -115,8 +116,8 @@ def test_make_labels_with_prompt_mask():
 
 def test_collector_collects_samples(fake_lm, fake_tokenizer):
     """ActivationDatasetCollector.collect returns a list[DatasetSample] with activations."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     collector = ActivationDatasetCollector(pipeline, max_new_tokens=2)
 
     questions = ["What is 2+2?", "Capital of France?"]
@@ -135,8 +136,8 @@ def test_collector_collects_samples(fake_lm, fake_tokenizer):
 
 def test_collector_save_load_round_trip(tmp_path, fake_lm, fake_tokenizer):
     """save → load returns identical samples."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     collector = ActivationDatasetCollector(pipeline, max_new_tokens=2)
     samples = collector.collect(["Hello"], ["world"], verbose=False)
 
@@ -157,8 +158,8 @@ def test_collector_save_load_round_trip(tmp_path, fake_lm, fake_tokenizer):
 
 
 def _build_pipeline_with_doubter(fake_lm, fake_tokenizer):
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="selective", encoder_bottleneck=16,
         ca_bottleneck_dim=16, ca_num_heads=2, num_cognitive_tokens=4,
@@ -251,8 +252,8 @@ def test_trainer_pretrain_projectors(fake_lm, fake_tokenizer):
 
 def test_trainer_with_transformer_encoder_skips_pretrain(fake_lm, fake_tokenizer):
     """pretrain_projectors does not fail on a TransformerEncoder (skip)."""
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu", dtype="float32")
-    pipeline = MetaSpiderPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu", dtype="float32")
+    pipeline = MetaAttentionPipeline.from_pretrained(cfg, model=fake_lm, tokenizer=fake_tokenizer)
     doubter = Doubter(DoubterConfig(
         encoder_type="transformer",
         transformer_encoder_dim=32, transformer_num_blocks=1, transformer_num_heads=2,
@@ -294,10 +295,10 @@ def test_trainer_checkpoint_round_trip(tmp_path, fake_lm, fake_tokenizer):
 
 
 def _make_clean_pipeline(fake_lm, fake_tokenizer):
-    from meta_core import MetaSpiderConfig, MetaSpiderPipeline
+    from meta_attention import MetaAttentionConfig, MetaAttentionPipeline
 
-    cfg = MetaSpiderConfig(model_name="fake/model", device="cpu")
-    return MetaSpiderPipeline.from_pretrained(
+    cfg = MetaAttentionConfig(model_name="fake/model", device="cpu")
+    return MetaAttentionPipeline.from_pretrained(
         cfg, model=fake_lm, tokenizer=fake_tokenizer,
     )
 
@@ -312,7 +313,7 @@ def test_batched_collect_equals_single(fake_lm, fake_tokenizer):
     """
     import torch
 
-    from meta_loom import ActivationDatasetCollector
+    from daimon_loom import ActivationDatasetCollector
 
     questions = ["short", "a much longer question text", "mid length q", "x"]
     truths = ["a", "b", "c", "d"]
@@ -338,7 +339,7 @@ def test_batched_collect_equals_single(fake_lm, fake_tokenizer):
 
 def test_batched_collect_restores_padding_side(fake_lm, fake_tokenizer):
     """The collector temporarily sets left-padding and restores the original side."""
-    from meta_loom import ActivationDatasetCollector
+    from daimon_loom import ActivationDatasetCollector
 
     fake_tokenizer.padding_side = "right"
     pipe = _make_clean_pipeline(fake_lm, fake_tokenizer)
@@ -350,7 +351,7 @@ def test_batched_collect_restores_padding_side(fake_lm, fake_tokenizer):
 def test_default_check_handles_markdown_and_aliases():
     """Canary v8 lesson: chat models bold their answers (**Karl Marx**), a naive
     substring doesn't match; the check must go over all aliases."""
-    from meta_loom import ActivationDatasetCollector
+    from daimon_loom import ActivationDatasetCollector
 
     check = ActivationDatasetCollector._default_check
     pred = "The Communist Manifesto was written by **Karl Marx** and **Friedrich Engels**."
@@ -362,7 +363,7 @@ def test_default_check_handles_markdown_and_aliases():
 
 def test_collect_with_alias_lists(fake_lm, fake_tokenizer):
     """ground_truths as list[list[str]]: canonical in ground_truth, all of them in aliases."""
-    from meta_loom import ActivationDatasetCollector
+    from daimon_loom import ActivationDatasetCollector
 
     pipe = _make_clean_pipeline(fake_lm, fake_tokenizer)
     coll = ActivationDatasetCollector(pipe, max_new_tokens=2, batch_size=2)
@@ -378,7 +379,7 @@ def test_collect_with_alias_lists(fake_lm, fake_tokenizer):
 
 def test_dataset_save_load_aliases_roundtrip(tmp_path, fake_lm, fake_tokenizer):
     """aliases survive save/load; format 1.0 without aliases reads back (None)."""
-    from meta_loom import ActivationDatasetCollector
+    from daimon_loom import ActivationDatasetCollector
 
     pipe = _make_clean_pipeline(fake_lm, fake_tokenizer)
     coll = ActivationDatasetCollector(pipe, max_new_tokens=2, batch_size=2)

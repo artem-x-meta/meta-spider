@@ -3,12 +3,12 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meta-spider"
-version = "0.0.1"
-description = "Meta-attention toolkit: pluggable cognitive modifiers (Doubter, Watchdog) for any HuggingFace causal LM"
+name = "daimon"
+version = "0.4.0"
+description = "Pluggable cognitive voices (Doubter, GoalAnchor, ChronoAnchor) for any HuggingFace causal LM, on the meta-attention mechanism"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
+license = { text = "MIT" }
 authors = [
     { name = "Reflexion Core contributors" },
 ]
@@ -16,7 +16,7 @@ keywords = ["llm", "introspection", "meta-attention", "interpretability", "align
 classifiers = [
     "Development Status :: 1 - Planning",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
+    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -24,12 +24,11 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
-# Umbrella shim: re-exports Meta-Core + Meta-Loom (backward compatibility for the
-# top-level API `from meta_spider import ...`). The real code lives in the meta-core / meta-loom packages.
+# Umbrella: re-exports the mechanism (meta-attention, under the Daimon* names) + the voices.
+# The real code lives in the meta-attention library and the daimon-voices package.
 dependencies = [
-    "meta-core",
-    "meta-daimon",
-    "meta-loom",
+    "meta-attention>=0.1",
+    "daimon-voices",
 ]
 
 [project.optional-dependencies]
@@ -38,7 +37,7 @@ eval = [
     # "requests>=2.31",
     # "python-dotenv>=1.0",
 ]
-# train: extra deps for training modifiers (Level 3)
+# train: extra deps for training voices (Level 3)
 train = [
     # "tqdm>=4.66",
     # "transformers>=4.40",
@@ -51,8 +50,8 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/Imperius/reflexion-core"
-Documentation = "https://github.com/Imperius/reflexion-core/tree/main/meta-spider-framework-dev"
+Documentation = "https://github.com/Imperius/reflexion-core/tree/main/daimon-framework-dev"
 
 [tool.setuptools.packages.find]
-include = ["meta_spider*"]
+include = ["daimon*"]
 exclude = ["tests*", "examples*"]

@@ -5,8 +5,8 @@ import json
 
 import torch
 
-from meta_core import GoalAnchor, GoalAnchorConfig
-from meta_loom.data import drift_sessions as DS
+from daimon_voices import GoalAnchor, GoalAnchorConfig
+from daimon_loom.data import drift_sessions as DS
 from tests.test_cli import _fake_pipe
 
 
@@ -63,8 +63,8 @@ def test_drift_onset_labels_fire_before_offtask():
 def test_trainer_trains_goal_anchor_end_to_end(fake_lm_factory, fake_tokenizer):
     """The v3 objective: injector learned via the SAME LM-CE Trainer as the Doubter
     (targets = correct next action), with GOAL activations as the anchor input."""
-    from meta_loom.training.collector import DatasetSample
-    from meta_loom.training.trainer import Trainer, TrainerConfig
+    from daimon_loom.training.collector import DatasetSample
+    from daimon_loom.training.trainer import Trainer, TrainerConfig
 
     pipe = _fake_pipe(fake_lm_factory)
     anchor = GoalAnchor(GoalAnchorConfig(

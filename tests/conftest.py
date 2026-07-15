@@ -45,7 +45,7 @@ class _FakeConfig:
 
 class FakeLM(nn.Module):
     """Minimal model with `.model.layers` + `.config` — compatible with ActivationCollector
-    and `MetaSpiderPipeline.from_pretrained(model=...)` (we pass a ready-made model so we
+    and `MetaAttentionPipeline.from_pretrained(model=...)` (we pass a ready-made model so we
     don't download HF and don't need transformers)."""
 
     def __init__(self, hidden_dim: int = 64, num_layers: int = 4, vocab_size: int = 100):
@@ -86,6 +86,22 @@ class FakeLM(nn.Module):
                 raise ValueError("Need input_ids or inputs_embeds")
 
         hidden = self.model(x)
+
+        # HF-style hidden_states: (embeddings, layer_1, …, layer_N). The stack is sequential,
+        # so we re-run it layer by layer — used by goal_pool="tokens" (ChronoAnchor).
+        if kwargs.get("output_hidden_states"):
+            states = [x]
+            h = x
+            for layer in self.model.layers:
+                h = layer(h)
+                if isinstance(h, tuple):
+                    h = h[0]
+                states.append(h)
+            out = type("Out", (), {})()
+            out.hidden_states = tuple(states)
+            out.logits = self.lm_head(hidden)
+            out.last_hidden_state = hidden
+            return out
 
         # If labels are passed — return an HF-style object with .loss + .logits
         if labels is not None:

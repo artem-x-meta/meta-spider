@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daimon-voices"
+version = "0.4.0"
+description = "Daimon-Voices — the inner voices: Doubter (doubt), GoalAnchor (goal), Chronographer (memory), ChronoAnchor (goal-conditioned memory). Socratic daimonion: they counsel, they do not rule."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Imperius" }]
+dependencies = [
+    "meta-attention>=0.1",
+]
+
+[project.urls]
+Repository = "https://codeberg.org/imperius/daimon"
+Documentation = "https://github.com/Imperius/reflexion-core/tree/main/daimon-framework-dev/daimon-voices"
+
+[tool.setuptools.packages.find]
+include = ["daimon_voices*"]

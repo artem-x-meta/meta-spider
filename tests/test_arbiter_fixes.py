@@ -6,9 +6,10 @@ import json
 import pytest
 import torch
 
-from meta_core import Doubter, DoubterConfig, MetaSpiderConfig, MetaSpiderPipeline
-from meta_core.buffer import ReflexionBuffer
-from meta_core.hooks import ActivationCollector
+from meta_attention import MetaAttentionConfig, MetaAttentionPipeline
+from daimon_voices import Doubter, DoubterConfig
+from meta_attention.buffer import ReflexionBuffer
+from meta_attention.reader import ActivationCollector
 from tests.test_cli import _fake_pipe
 
 
@@ -66,9 +67,9 @@ def test_checkpoint_layer_mismatch_raises(tmp_path, fake_lm_factory):
 
     m = fake_lm_factory(hidden_dim=64, num_layers=4)
     from tests.conftest import FakeTokenizer
-    cfg = MetaSpiderConfig(model_name="fake", device="cpu", dtype="float32",
+    cfg = MetaAttentionConfig(model_name="fake", device="cpu", dtype="float32",
                            target_layers=[0, 1, 2, 3], cross_attn_layers=[0, 1])  # mismatch
-    pipe2 = MetaSpiderPipeline.from_pretrained(cfg, model=m, tokenizer=FakeTokenizer())
+    pipe2 = MetaAttentionPipeline.from_pretrained(cfg, model=m, tokenizer=FakeTokenizer())
     d2 = Doubter.from_checkpoint(path)
     with pytest.raises(RuntimeError, match="mismatch"):
         pipe2.attach(d2)
@@ -77,7 +78,7 @@ def test_checkpoint_layer_mismatch_raises(tmp_path, fake_lm_factory):
 # ───────────────────── A3: EOS supervised (labels mask by position, not value) ─────────────────────
 
 def test_labels_mask_keeps_eos():
-    from meta_loom.training.losses import make_labels_with_prompt_mask
+    from daimon_loom.training.losses import make_labels_with_prompt_mask
     pad = 0
     # seq: [prompt 5, 6] [target 7, eos=pad_id? no: eos==pad VALUE 0] + padding 0 0
     # with pad==eos, the target-final eos token has the SAME id as padding.
@@ -94,8 +95,8 @@ def test_labels_mask_keeps_eos():
 
 def test_trainer_appends_eos(fake_lm_factory):
     """_train_step must train on target+eos (the wrapper learns to STOP after the phrase)."""
-    from meta_loom.training.collector import DatasetSample
-    from meta_loom.training.trainer import Trainer, TrainerConfig
+    from daimon_loom.training.collector import DatasetSample
+    from daimon_loom.training.trainer import Trainer, TrainerConfig
 
     pipe = _fake_pipe(fake_lm_factory)
     d = _mini_doubter()
@@ -143,7 +144,7 @@ def test_expand_batch_mismatch_raises():
 # ───────────────────── B4: MCQ letter extraction (oracle skew) ─────────────────────
 
 def test_mcq_checker_extracts_choice():
-    from meta_loom.data.dataset import check_answer_correctness, extract_mcq_letter
+    from daimon_loom.data.dataset import check_answer_correctness, extract_mcq_letter
     # explicit statements
     assert extract_mcq_letter("The answer is B") == "B"
     assert extract_mcq_letter("Answer: (C)") == "C"
@@ -162,7 +163,7 @@ def test_mcq_checker_extracts_choice():
 # ───────────────────── B1: tool-call target format ─────────────────────
 
 def test_tool_call_formats_and_detection():
-    from meta_loom.data.agentic_mix import (
+    from daimon_loom.data.agentic_mix import (
         TOOL_CALL_FORMATS, detect_tool_call_format, tool_call_text,
     )
 
@@ -188,7 +189,7 @@ def test_tool_call_formats_and_detection():
 # ───────────────────── B3: abstain affordance (fair baseline) ─────────────────────
 
 def test_abstain_affordance_suffix():
-    from meta_loom.cli.collect import (
+    from daimon_loom.cli.collect import (
         ABSTAIN_AFFORDANCE_SUFFIX, MCQ_SUFFIX, resolve_prompt_flags,
     )
     # off by default — old behavior intact
@@ -200,14 +201,14 @@ def test_abstain_affordance_suffix():
     suffix, _ = resolve_prompt_flags(False, False, None, abstain_affordance=True)
     assert suffix == ABSTAIN_AFFORDANCE_SUFFIX
     # the wording must trip the refusal detector
-    from meta_loom.evaluation.harness import REFUSAL_PHRASES
+    from daimon_loom.evaluation.harness import REFUSAL_PHRASES
     assert any(p in ABSTAIN_AFFORDANCE_SUFFIX.lower() for p in REFUSAL_PHRASES)
 
 
 def test_check_gsm8k_answer_sentence_period():
     """Регекс чисел не должен захватывать точку конца предложения (находка второго Fable:
     «The answer is 5.» парсился как «5.» и молча занижал оракул на фразовых ответах)."""
-    from meta_loom.data.dataset import check_gsm8k_answer
+    from daimon_loom.data.dataset import check_gsm8k_answer
     assert check_gsm8k_answer("The answer is 5.", "5")
     assert check_gsm8k_answer("So the total is 1,234.", "1234")
     assert check_gsm8k_answer("It equals 3.14, done.", "3.14")     # честная десятичная жива

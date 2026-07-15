@@ -1,9 +1,14 @@
-# Meta-Spider
+# Daimon
 
-> Pluggable cognitive modifiers for any HuggingFace causal LM.
+> Pluggable cognitive voices for any HuggingFace causal LM.
 > Architectural introspection via meta-attention — no base fine-tuning.
+>
+> *Formerly published as `meta-spider`. The rename is part of v0.4.0: the framework is the
+> **daimon** — the model's inner advisory voices (the Socratic daimonion: it counsels, it does
+> not rule); the injection mechanism itself now lives in the separate
+> [`meta-attention`](https://github.com/artem-x-meta/meta-attention) library (Apache-2.0).*
 
-📖 **Documentation (with diagrams, EN/RU):** [imperius.codeberg.page/meta-spider](https://imperius.codeberg.page/meta-spider/)
+📖 **Documentation (with diagrams, EN/RU):** [imperius.codeberg.page/daimon](https://imperius.codeberg.page/daimon/)
 
 ```text
 Text reflection:    model → "think again" → model re-reads text
@@ -15,43 +20,60 @@ The base model is **frozen**. Only a thin wrapper is trained (~2.3% of params on
 On Llama-3.1-8B Phase 2 Selective MMLU: **selective accuracy 89.1%** (base 64.6%) at 37% coverage —
 the model answers far more reliably on what it chooses to answer (see the honest-metrics caveat below).
 
-## New in v0.3.0
+## New in v0.4.0
 
-- **A latent channel beats a text prompt.** Asking the model to "be unsure" barely moves it; the trained
-  wrapper does. Fair 2×2 on Qwen2.5-14B (both arms allowed to abstain): declining the unanswerable — text
-  prompt 0.07 → 0.07 (nothing), wrapper → **0.87**; catching the base's errors — wrapper **78%** vs a
-  prompt's 14%. The uncertainty lives in the residual stream, where a prompt can't reach it.
+- **The rename: meta-spider → daimon.** The framework is the family of *voices* — the frozen
+  model's inner advisers, summed on the residual stream, each with its own gain fader.
+- **The mechanism is now a library.** Reading activations, encoders, gated cross-attention, the
+  two-pass pipeline, the checkpoint format **and the whole C++/ggml + llama.cpp leg** moved to
+  [`meta-attention`](https://github.com/artem-x-meta/meta-attention) (Apache-2.0). It knows
+  nothing about doubt, goals or memory — a boundary test enforces that from both sides. The seam
+  is the `Injector` protocol (library: *when the mechanism calls you*) vs the `Voice` contract
+  (framework: Injector + lifecycle + checkpoint discipline + gain fader).
+- **ChronoAnchor — goal-conditioned episodic memory.** GoalAnchor and Chronographer fused: the
+  goal is not a second voice on the residual but a privileged INPUT of the memory organ. See
+  "What it gives you" below for numbers.
+- **GoalAnchor published** (early-stage): the goal-drift voice, the `metaloom build-anchor`
+  factory and GGUF anchor export. Measured on Qwen2.5-14B agentic coding: constraint defense
+  **+19pp** in-domain, transfer to unseen constraint families without quality loss.
+- **OpenAI-compatible serving** (`daimon-agent`): serve a voice-equipped model behind
+  `/v1/chat/completions` with latent side-channels (`/v1/meta/goal`, `/v1/meta/gain`) — two legs,
+  HF pipeline and patched llama.cpp. Any OpenAI-client agent framework plugs in unchanged.
+
+### Still true from v0.3.x
+
+- **A latent channel beats a text prompt.** Fair 2×2 on Qwen2.5-14B (both arms allowed to
+  abstain): declining the unanswerable — text prompt 0.07 → 0.07 (nothing), wrapper → **0.87**;
+  catching the base's errors — wrapper **78%** vs a prompt's 14%.
   (`docs/results/qwen-14b/text-vs-latent.md`)
-- **The uncertainty knob (gain).** The injection is one runtime dial — `doubter.set_gain(x)` /
-  `META_GAIN` in llama.cpp. `gain` 0 → 1.5 turns refusals ~2% → 51% smoothly; `<0` inverts toward
-  confidence. A latent mixer, not a baked-in LoRA delta.
-- **The Watchdog (read-only sensor).** A `ConfidenceProbe` on the cognitive token tells you the model is
-  unsure and gates an external action (retrieve / clarify / escalate) — **without injecting into
-  generation** (`from meta_core import Watchdog, ConfidenceProbe`).
-- **The wrapper factory.** `metaloom build-universal --model-name N` builds a *general* uncertainty
-  wrapper for any base from a balanced diverse mix — on a 6-axis agentic suite the only variant with no
-  axis collapse. (`docs/results/qwen-14b/diverse-train-balanced.md`)
+- **The uncertainty knob (gain).** `doubter.set_gain(x)` / `META_GAIN` in llama.cpp: gain 0 → 1.5
+  turns refusals ~2% → 51% smoothly; `<0` inverts toward confidence.
+- **The Watchdog (read-only sensor).** A `ConfidenceProbe` on the cognitive token gates an
+  external action without injecting (`from daimon_voices.watchdog import ConfidenceProbe`).
+- **The wrapper factory.** `metaloom build-universal --model-name N` builds a general uncertainty
+  wrapper for any base. (`docs/results/qwen-14b/diverse-train-balanced.md`)
 
-## Structure: Meta-Core + Meta-Loom + Meta-Agent + Meta-Deploy
+## Structure: one library + four packages
 
-Four pip packages, each in its own folder under `meta-spider-framework/` (its own pyproject):
+The **mechanism** lives in its own library; the framework packages hold the *opinions* built on it:
 
 | Component | What | Import |
 |-----------|------|--------|
-| **Meta-Core** | inference primitives: pipeline (two-pass), hooks, cross-attention, encoders, modifiers, checkpoint contract | `from meta_core import ...` (pip: `meta-core`) |
-| **Meta-Loom** | training + eval: Trainer, collector, losses; BaselineComparison (QA selective) + **AgentComparison** (agentic) | `from meta_loom import ...` (pip: `meta-loom`) |
-| **Meta-Agent** | agentic runtime + chat: MetaAgent, Session, native tool format, backends | `from meta_agent import ...` (pip: `meta-agent`) |
-| **Meta-Deploy** | llama.cpp deploy: export the wrapper to a GGUF sidecar + ggml/C++ forward (CPU/Metal/edge) — `train in PyTorch → deploy in llama.cpp` | `from meta_deploy import ...` / `metadeploy` (pip: `meta-deploy`) |
+| [**meta-attention**](https://github.com/artem-x-meta/meta-attention) | the MECHANISM: two-pass pipeline, activation reader, encoders, gated cross-attention, buffer, checkpoint format, `Injector` protocol, C++/ggml + llama.cpp leg | `from meta_attention import ...` (separate repo, Apache-2.0) |
+| **daimon-voices** | the VOICES + the `Voice` contract + `watchdog`: Doubter, GoalAnchor, Chronographer, ChronoAnchor | `from daimon_voices import ...` |
+| **daimon-agent** | agentic runtime + chat + OpenAI-compatible serving: MetaAgent, Session, native tool format, backends | `from daimon_agent import ...` |
+| **daimon-loom** | training + eval + factories: Trainer, collector, losses; BaselineComparison (QA selective) + AgentComparison (agentic); `metaloom` CLI | `from daimon_loom import ...` |
+| **daimon-deploy** | GGUF sidecar export for llama.cpp — `train in PyTorch → deploy in llama.cpp` | `from daimon_deploy import ...` / `metadeploy` |
 
-**Dependency graph:** `Meta-Core` is the pure core (depends on nothing), production inference installs
-only it. `Meta-Agent` → Core. `Meta-Loom` → Core **+ Agent** (the `AgentComparison` agentic eval runs
-the Meta-Agent runtime). `Meta-Deploy` → Core (reads the checkpoint contract; the export side is light —
-numpy+gguf, the C++ ggml forward builds separately). `from meta_spider import ...` is a thin umbrella
-**compat shim** that re-exports the public Core+Loom API (backward-compat top-level names).
+**Dependency graph:** `meta-attention` depends on nothing. `daimon-voices` → the library.
+`daimon-agent` → the library. `daimon-loom` → library + voices + agent (the agentic eval runs the
+real runtime). `daimon-deploy` → the library (the checkpoint contract). `from daimon import ...`
+is a thin umbrella that re-exports the mechanism under the `Daimon*` names
+(`DaimonPipeline is MetaAttentionPipeline`) plus the voices.
 
 ## What it gives you
 
-A validated modifier:
+A validated voice:
 
 - **Doubter** — the model learns calibrated refusal ("I'm not sure") instead of hallucinating, plus
   optional self-correction. Phase 2 Selective MMLU on Llama-8B: selective accuracy 89.1%,
@@ -60,28 +82,40 @@ A validated modifier:
 - **Watchdog** — the same signal, read-only: a `ConfidenceProbe` gates an external action without
   touching generation.
 
+- **ChronoAnchor** — goal-conditioned episodic memory for AGENT SESSIONS: the session's goal
+  (a policy: *"stay under $60"*, *"read-only, never modify"*) is injected as a LATENT condition
+  into the memory organ, so every memory token carries a piece of the goal. The goal never enters
+  the prompt — and the agent still obeys it across a long tool-using session. On Llama-3.2-1B:
+  **1.000 vs the 0.500 structural ceiling** of the same weights without the goal, and **0.972 under
+  unseen adversarial lures** that collapse the bare model to 0.139. On gemma-4-12b it beats even a
+  TEXT goal where the model's RLHF prior overrides an instruction (`stdlib-only`: text 0/6 → latent
+  6/6). Wiring: `anchor.set_goal(...)` once, `MetaAgent(..., step_hooks=[anchor])` — see
+  `examples/chrono_anchor_agent.py`.
+
 And the tooling around it:
 
-- **`gain` knob** — one runtime dial on the injection (`set_gain` / `META_GAIN`); mix N modifiers on the
+- **`gain` knob** — one runtime dial on the injection (`set_gain` / `META_GAIN`); mix N voices on the
   shared residual, each with its own gain. AGC damps the self-amplifying loop over long generation.
 - **`metaloom build-universal`** — the factory: one command builds a general uncertainty wrapper for any
   base from a balanced diverse mix (collect → train → per-axis eval → GGUF).
 - Trainer on your data (two-pass + the 5-group AdamW from the Phase 2 record)
-- BaselineComparison — the main selective-eval tool: (base) vs (base+modifiers) on a QABenchmark
+- BaselineComparison — the main selective-eval tool: (base) vs (base+voices) on a QABenchmark
   (MMLU/GSM8K/HumanEval/custom JSONL) with statistical significance (McNemar + paired t-test, no scipy)
-- AgentComparison — agentic eval (multi-step tool use) via Meta-Agent: an honest base vs Doubter+AGC
+- AgentComparison — agentic eval (multi-step tool use) via the daimon-agent runtime: an honest base vs Doubter+AGC
   loop on the same tools (native tool format, not hand-rolled ReAct)
 
 ## Install
 
 ```bash
-git clone https://codeberg.org/imperius/meta-spider
-cd meta-spider
-# editable packages (Loom pulls Core+Agent); production inference — only meta-core:
-pip install -e meta-core -e meta-agent -e meta-loom
+# the mechanism first — everything stands on it:
+pip install git+https://github.com/artem-x-meta/meta-attention
+
+git clone https://codeberg.org/imperius/daimon
+cd daimon
+pip install -e daimon-voices -e daimon-agent -e daimon-loom
 # optional llama.cpp deploy (GGUF sidecar export):
-pip install -e meta-deploy
-# optional umbrella shim for `from meta_spider import ...`:
+pip install -e daimon-deploy
+# optional umbrella for `from daimon import ...`:
 pip install -e .
 ```
 
@@ -89,24 +123,26 @@ Core deps: `torch>=2.1`, `numpy>=1.24`.
 To load HF models: `pip install transformers accelerate`. For base quantization
 (`--quantization nf4`/`int8`) — also `pip install bitsandbytes`.
 
-> **On "production installs only meta-core".** This is about the package DEPENDENCY graph (meta-core
-> depends on nothing, installs alone), NOT "nothing else is needed": running inference on an HF model
-> still requires `transformers` (+ `bitsandbytes` for nf4) — installed separately.
+> **Production inference needs only `meta-attention` + `daimon-voices`** (the library depends on
+> nothing; voices depend on the library). That is about the package DEPENDENCY graph, NOT "nothing
+> else is needed": running on an HF model still requires `transformers` (+ `bitsandbytes` for nf4).
 
 ## Quickstart
 
 ### Inference with pre-trained checkpoints
 
 ```python
-from meta_core import MetaSpiderConfig, MetaSpiderPipeline, Doubter
+from daimon import DaimonConfig, DaimonPipeline, Doubter
+# (umbrella names; equivalently: from meta_attention import MetaAttentionConfig, MetaAttentionPipeline
+#  and from daimon_voices import Doubter)
 
 # IMPORTANT: target/cross_attn_layers must match those the checkpoint was trained with
 # (they live in run.json next to doubter_checkpoint.pt). Otherwise — "Missing key(s) layer_projectors.*".
-cfg = MetaSpiderConfig(
+cfg = DaimonConfig(
     model_name="meta-llama/Llama-3.2-1B-Instruct",
     target_layers="late", cross_attn_layers="late",   # as in training (or an explicit list from run.json)
 )
-pipeline = MetaSpiderPipeline.from_pretrained(cfg)
+pipeline = DaimonPipeline.from_pretrained(cfg)
 
 pipeline.attach(Doubter.from_checkpoint("doubter.pt"))
 
@@ -114,17 +150,17 @@ text = pipeline.generate("Describe a sunset", max_new_tokens=100)
 # → a calibrated answer: answers confidently or refuses honestly
 ```
 
-> The CLI automates this: `meta-agent run --run-dir <run> "question"` reads `run.json` itself
+> The CLI automates this: `daimon-agent run --run-dir <run> "question"` reads `run.json` itself
 > (model + layers + checkpoint) — nothing to specify by hand.
 
 ### Training a Doubter on your data
 
 ```python
-from meta_core import MetaSpiderConfig, MetaSpiderPipeline, Doubter, DoubterConfig
-from meta_loom import ActivationDatasetCollector, Trainer, TrainerConfig
+from daimon import DaimonConfig, DaimonPipeline, Doubter, DoubterConfig
+from daimon_loom import ActivationDatasetCollector, Trainer, TrainerConfig
 
-cfg = MetaSpiderConfig(model_name="meta-llama/Llama-3.2-1B-Instruct")
-pipeline = MetaSpiderPipeline.from_pretrained(cfg)
+cfg = DaimonConfig(model_name="meta-llama/Llama-3.2-1B-Instruct")
+pipeline = DaimonPipeline.from_pretrained(cfg)
 
 # 1. Once: collect activations + baseline answers (cache to disk)
 collector = ActivationDatasetCollector(pipeline)
@@ -143,10 +179,10 @@ history = trainer.train(
 )
 ```
 
-### Evaluating the modifier's value-add
+### Evaluating the voice's value-add
 
 ```python
-from meta_loom import QABenchmark, BaselineComparison
+from daimon_loom import QABenchmark, BaselineComparison
 
 bench = QABenchmark.from_jsonl("mmlu_hard.jsonl", name="mmlu_hard", scoring="multiple_choice")
 report = BaselineComparison(pipeline, bench).run(num_tasks=500)
@@ -170,12 +206,12 @@ deploy in llama.cpp`: calibrated refusal on a quantized GGUF base without CUDA/P
 
 ```bash
 metadeploy export --run-dir runs/my_doubter          # wrapper → doubter_sidecar.gguf
-# + the llama.cpp patch (meta-deploy/llama_patch/) → llama-meta-generate (two-pass injection)
+# + the llama.cpp patch (meta-attention library, cpp/llama_patch/) → llama-meta-generate (two-pass injection)
 ```
 
 Verified end-to-end (Qwen2.5-0.5B selective): base answers, Doubter → calibrated refusal — verbatim as
 PyTorch. The encoder (selective+multi_token) and CA match PyTorch (diff ~1e-7). Calibration survives
-quantization down to Q4_K_M (refusal_prec ~0.97). Details — [`meta-deploy/`](meta-deploy/README.md).
+quantization down to Q4_K_M (refusal_prec ~0.97). Details — [`daimon-deploy/`](daimon-deploy/README.md).
 
 ## Architecture
 
@@ -210,7 +246,7 @@ Five components:
 5. **Two-pass forward** — Pass 1 reads + encodes, Pass 2 generates with active injection.
    ActivationCollector is frozen during Pass 2 so it doesn't overwrite the buffer.
 
-## The modifier
+## The voice
 
 ### Doubter — calibrated answerer
 
@@ -223,7 +259,7 @@ hallucinating. On hard tasks, optionally with self-correction ("Wait, actually..
 **API:**
 
 ```python
-from meta_core import Doubter, DoubterConfig
+from daimon_voices import Doubter, DoubterConfig
 
 doubter = Doubter(DoubterConfig(
     encoder_type="selective",       # or "transformer" (Phase 8, unlocked self-correction)
@@ -250,7 +286,7 @@ pipeline.attach(doubter)
 explicit list of indices or a preset:
 
 ```python
-cfg = MetaSpiderConfig(
+cfg = DaimonConfig(
     model_name="...",
     target_layers="all",        # read from all layers (hooks are free)
     cross_attn_layers="late",   # inject only into the top third
@@ -299,7 +335,7 @@ The base is frozen — it inherits the whole PEFT arsenal. Backward through quan
 (the QLoRA approach): the wrapper lives outside them.
 
 ```python
-cfg = MetaSpiderConfig(
+cfg = DaimonConfig(
     model_name="meta-llama/Llama-3.1-8B-Instruct",
     quantization="nf4",            # None | "int8" (~2×) | "nf4" (~4×, recommended) | "fp4"
     double_quant=True,             # another ~0.4 bytes/param for 4-bit
@@ -330,10 +366,12 @@ Two built-in:
 | `SelectiveEncoder` | per-layer projectors (LN+Linear+GELU) + per-layer encoder gates + shared output proj. **No self-attention** between layers | Phase 1-5 canon, the calibration record |
 | `TransformerEncoder` | per-layer projectors + N×TransformerBlock (multi-head self-attn + FFN) + output proj. Optional `prenorm_projector=True` (Phase 8 convention) | Phase 8 — unlocked self-correction (correction_acc 50% on 1B) |
 
-You can register your own:
+You can bring your own — an encoder is any `nn.Module` satisfying the library's `Encoder`
+protocol; pass the instance to your own `Injector`/`Voice` (the built-in voices construct
+theirs from `encoder_type`):
 
 ```python
-from meta_core import register_encoder, Encoder
+from meta_attention import Encoder
 import torch.nn as nn
 
 class MyEncoder(nn.Module, Encoder):
@@ -344,8 +382,6 @@ class MyEncoder(nn.Module, Encoder):
         # activation_list: list of [B, hidden_dim], len=num_layers
         # return cognitive_tokens [B, num_layers, hidden_dim]
         ...
-
-register_encoder("my_encoder", MyEncoder)
 ```
 
 ## Training
@@ -378,7 +414,7 @@ Two built-in types:
 ### `QABenchmark` — single-shot
 
 ```python
-from meta_loom import QABenchmark, BenchmarkTask
+from daimon_loom import QABenchmark, BenchmarkTask
 
 tasks = [BenchmarkTask(task_id=f"q{i}", prompt=q, expected_answer=a)
          for i, (q, a) in enumerate(zip(questions, answers))]
@@ -391,11 +427,11 @@ bench = QABenchmark.from_jsonl("mmlu_hard.jsonl", name="mmlu_hard", scoring="mul
 
 ### `AgentComparison` / `AgentTask` — agentic eval (multi-step tool use)
 
-An honest base-vs-Doubter loop through the **Meta-Agent** runtime (native tool format, not hand-rolled ReAct):
+An honest base-vs-Doubter loop through the **daimon-agent** runtime (native tool format, not hand-rolled ReAct):
 
 ```python
-from meta_agent import Tool, ToolRegistry
-from meta_loom import AgentComparison, AgentTask
+from daimon_agent import Tool, ToolRegistry
+from daimon_loom import AgentComparison, AgentTask
 
 # Tool(name, description, fn, arg="input") — fn(**{arg}) -> str
 search = Tool("search", "Search the web", lambda input: f"Found: {input}")
@@ -414,7 +450,7 @@ print(report)   # pass-rate base vs Doubter, rescued/broke, lookup spend
 
 ### `BaselineComparison` — the main tool
 
-Runs the benchmark twice (base with modifiers off + with them on), computes deltas + statistical
+Runs the benchmark twice (base with voices off + with them on), computes deltas + statistical
 significance:
 
 ```python
@@ -429,47 +465,57 @@ report.save_json("results.json")
 
 | Class | Where | What it does |
 |---|---|---|
-| `MetaSpiderConfig` | `config.py` | Top-level config + `resolve_defaults` auto-detect |
-| `MetaSpiderPipeline` | `pipeline.py` | Wrap an HF LM + two-pass forward |
-| `Doubter` / `DoubterConfig` | `modifiers/doubter.py` | Calibrated answerer |
-| `SelectiveEncoder` | `encoders/selective.py` | Feedforward encoder (Phase 1-5 canon) |
-| `TransformerEncoder` | `encoders/transformer.py` | Mini-transformer over cog tokens (Phase 8) |
-| `BottleneckCrossAttention` | `cross_attention.py` | Meta-attention head |
-| `ReflexionBuffer` | `buffer.py` | Cog-token storage |
-| `ActivationCollector` | `hooks.py` | Forward hooks for activations |
-| `Trainer` / `TrainerConfig` | `training/trainer.py` | Two-pass + 5-group AdamW |
-| `ActivationDatasetCollector` | `training/collector.py` | Activation collection + cache |
-| `QABenchmark` / `BenchmarkTask` | `evaluation/benchmark.py` | Single-shot QA benchmark (selective eval) |
-| `AgentComparison` / `AgentTask` | `evaluation/agentic.py` | Agentic eval (multi-step tool use) via Meta-Agent |
-| `BaselineComparison` / `ComparisonReport` | `evaluation/comparison.py` | base vs modified with stat tests |
-| `EvalHarness` | `evaluation/harness.py` | sel_acc / refusal_prec / total_recovery |
-| `OpenRouterJudge` | `evaluation/llm_judge.py` | LLM-as-a-judge via OpenRouter (Nemotron 120B free) |
+| `MetaAttentionConfig` (`DaimonConfig`) | `meta_attention.config` | Top-level config + `resolve_defaults` auto-detect |
+| `MetaAttentionPipeline` (`DaimonPipeline`) | `meta_attention.pipeline` | Wrap an HF LM + two-pass forward |
+| `SelectiveEncoder` | `meta_attention.encoders.selective` | Feedforward encoder (Phase 1-5 canon) |
+| `TransformerEncoder` | `meta_attention.encoders.transformer` | Mini-transformer over cog tokens (Phase 8) |
+| `BottleneckCrossAttention` | `meta_attention.injection` | Meta-attention head |
+| `ReflexionBuffer` | `meta_attention.buffer` | Cog-token storage |
+| `ActivationCollector` | `meta_attention.reader` | Forward hooks for activations |
+| `Injector` | `meta_attention.injector` | The protocol: what the mechanism requires of an attachment |
+| `Voice` | `daimon_voices.voice` | Injector + lifecycle + checkpoint contract + gain fader |
+| `Doubter` / `DoubterConfig` | `daimon_voices.doubter` | Calibrated answerer |
+| `GoalAnchor` / `GoalAnchorConfig` | `daimon_voices.goal_anchor` | Persistent goal anchor, trigger-gated |
+| `Chronographer` / `ChronoAnchor` | `daimon_voices.chrono*` | Episodic memory / goal-conditioned memory |
+| `ConfidenceProbe` | `daimon_voices.watchdog` | Read-only probe that GATES (not a voice) |
+| `Trainer` / `TrainerConfig` | `daimon_loom.training.trainer` | Two-pass + 5-group AdamW |
+| `ChronoAnchorTrainer` | `daimon_loom.training.chrono_anchor_trainer` | The four-ingredient tandem recipe |
+| `ActivationDatasetCollector` | `daimon_loom.training.collector` | Activation collection + cache |
+| `QABenchmark` / `BenchmarkTask` | `daimon_loom.evaluation.benchmark` | Single-shot QA benchmark (selective eval) |
+| `AgentComparison` / `AgentTask` | `daimon_loom.evaluation.agentic` | Agentic eval (multi-step tool use) via daimon-agent |
+| `BaselineComparison` / `ComparisonReport` | `daimon_loom.evaluation.comparison` | base vs modified with stat tests |
+| `EvalHarness` | `daimon_loom.evaluation.harness` | sel_acc / refusal_prec / total_recovery |
+| `OpenRouterJudge` | `daimon_loom.evaluation.llm_judge` | LLM-as-a-judge via OpenRouter (Nemotron 120B free) |
+| `MetaAgent` / `Session` | `daimon_agent` | Agentic runtime (tools, policy, step hooks) |
+| `serve` | `daimon_agent.serve` | OpenAI-compatible server + latent side-channels |
 
 ## Project status
 
-The framework is assembled from validated implementations of the original project:
+Current state (v0.4.0):
 
-- **Doubter** — a port of the original project's Phase 1-8 implementation.
-
-Current state (v0.3.0):
-
-- Smoke tests green (`tests/`, CPU-only via a FakeLM — no GPU/network)
-- API stabilized — modular public surface: import from `meta_core` / `meta_loom` / `meta_agent`
-  directly (the `meta_spider` umbrella is kept only as an optional back-compat shim)
-- **Watchdog** is back in the core (`meta_core.watchdog`) — a read-only confidence sensor
-- **`build-universal`** factory ships in Meta-Loom; a general Qwen2.5-14B wrapper is published on the Hub
-- Trained Doubter checkpoints (Qwen, Granite) are published on the Hugging Face Hub
-  (each with a model card + GGUF sidecar)
+- Tests green (framework 239 + agent 27 + library 8+, CPU-only via a FakeLM — no GPU/network)
+- Modular public surface: `meta_attention` (the mechanism) / `daimon_voices` / `daimon_loom` /
+  `daimon_agent` / `daimon_deploy`; the `daimon` umbrella re-exports the common names
+- Voices shipped: **Doubter** (validated, checkpoints on the HF Hub), **GoalAnchor** (early-stage,
+  measured, on the Hub), **Chronographer** and **ChronoAnchor** (mechanism validated on Llama-1B,
+  scaling in progress)
+- **Watchdog** read-side probe (`daimon_voices.watchdog`)
+- Factories: `metaloom build-universal` (uncertainty wrapper) and `metaloom build-anchor` (goal anchor)
 
 Absent (by design, deferred):
 
-- Reassembler / Chronograph / Judge (research modifiers)
+- Reassembler (the third organ: strategy switch without losing the goal) — text-phase prototype
+  validated in research, no latent version yet
+- Judge / research probes beyond the Watchdog
 
 ## Further reading
 
 - Browsable docs: [`docs-site/index.html`](docs-site/index.html) — open in any browser (EN/RU)
-- Per-package details: the `README.md` inside each of `meta-core/` · `meta-loom/` · `meta-agent/` · `meta-deploy/`
+- The mechanism: [`meta-attention`](https://github.com/artem-x-meta/meta-attention) — the library
+  README, and `cpp/` for the llama.cpp leg
+- Per-package details: the `README.md` inside each of `daimon-voices/` · `daimon-loom/` ·
+  `daimon-agent/` · `daimon-deploy/`
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE).
+MIT — see [`LICENSE`](LICENSE). The `meta-attention` library is licensed separately (Apache-2.0).

@@ -1,4 +1,4 @@
-"""meta-deploy: GGUF-экспорт GoalAnchor (kind/trigger-метадата + тензоры)."""
+"""daimon-deploy: GGUF-экспорт GoalAnchor (kind/trigger-метадата + тензоры)."""
 import pytest
 
 torch = pytest.importorskip("torch")
@@ -24,7 +24,7 @@ def _fake_anchor_ckpt(tmp_path):
 
 def test_export_anchor_sidecar(tmp_path):
     from gguf import GGUFReader
-    from meta_deploy.export import export_anchor_sidecar
+    from daimon_deploy.export import export_anchor_sidecar
 
     out = str(tmp_path / "ga.gguf")
     export_anchor_sidecar(_fake_anchor_ckpt(tmp_path), hidden_dim=16, out=out, verbose=False)
@@ -38,19 +38,19 @@ def test_export_anchor_sidecar(tmp_path):
     def u(name):  # uint32-поле
         f = kv[name]; return int(f.parts[f.data[-1]][0])
 
-    assert s("meta_spider.kind") == "goal_anchor"
-    assert s("meta_spider.encoder_type") == "transformer"      # у якоря жёстко
-    assert s("meta_spider.trigger") == "fixed"
-    assert u("meta_spider.trigger_k") == 77
-    assert u("meta_spider.trigger_decision_layer") == 5
-    assert u("meta_spider.num_cognitive_tokens") == 2           # = len(target_layers)
-    assert u("meta_spider.enc_num_heads") == 2                  # из encoder_num_heads
+    assert s("daimon.kind") == "goal_anchor"
+    assert s("daimon.encoder_type") == "transformer"      # у якоря жёстко
+    assert s("daimon.trigger") == "fixed"
+    assert u("daimon.trigger_k") == 77
+    assert u("daimon.trigger_decision_layer") == 5
+    assert u("daimon.num_cognitive_tokens") == 2           # = len(target_layers)
+    assert u("daimon.enc_num_heads") == 2                  # из encoder_num_heads
     names = {t.name for t in r.tensors}
     assert "enc.queries" in names and "ca.2.q_proj.weight" in names and "ca.3.q_proj.weight" in names
 
 
 def test_export_rejects_doubter_via_anchor_api(tmp_path):
-    from meta_deploy.export import export_anchor_sidecar
+    from daimon_deploy.export import export_anchor_sidecar
     p = tmp_path / "d.pt"
     torch.save({"format_version": "1.1", "kind": "doubter", "config": {},
                 "encoder_state": {}, "ca_state": {}}, p)

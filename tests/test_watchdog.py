@@ -6,7 +6,7 @@
 import numpy as np
 import torch
 
-from meta_core import Watchdog, ConfidenceProbe
+from daimon_voices.watchdog import ConfidenceProbe, Watchdog
 
 
 def _clusters(n=40, hidden=8, num_cog=4, slot=0, seed=0):

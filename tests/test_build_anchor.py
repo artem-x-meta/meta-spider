@@ -8,17 +8,17 @@ import json
 
 import torch
 
-from meta_core import MetaSpiderConfig, MetaSpiderPipeline
-from meta_loom.cli import build_anchor as ba
+from meta_attention import MetaAttentionConfig, MetaAttentionPipeline
+from daimon_loom.cli import build_anchor as ba
 
 
 def _anchor_fake_pipe(fake_lm_factory):
     """Fake pipe whose CA lives on the TOP layers → a real slice cut (cut = min(CA)-1 = 1)."""
     from tests.conftest import FakeTokenizer
     m = fake_lm_factory(hidden_dim=64, num_layers=4)
-    cfg = MetaSpiderConfig(model_name="fake", device="cpu", dtype="float32",
+    cfg = MetaAttentionConfig(model_name="fake", device="cpu", dtype="float32",
                            target_layers=[2, 3], cross_attn_layers=[2, 3])
-    return MetaSpiderPipeline.from_pretrained(cfg, model=m, tokenizer=FakeTokenizer())
+    return MetaAttentionPipeline.from_pretrained(cfg, model=m, tokenizer=FakeTokenizer())
 
 
 def _fixed_pairs(pipeline, *, families, n_specs, verbose=True):
@@ -46,7 +46,7 @@ def test_build_anchor_stage_trains_and_saves(tmp_path, fake_lm_factory):
     assert c["kind"] == "goal_anchor"
     assert c["cross_attn_layers"] == [2, 3]                 # slice cut = 1
     manifest = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    assert manifest["modifier"] == "goal_anchor"
+    assert manifest["voice"] == "goal_anchor"
     assert manifest["families"] == ["func_name", "no_print"]
     assert manifest["n_pairs"] == 6
 

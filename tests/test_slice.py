@@ -4,13 +4,13 @@ collector cut-hidden (Chunk 3), partial slice-forward (Chunk 4, wiring on FakeLM
 import pytest
 import torch
 
-from meta_core import MetaSpiderConfig
+from meta_attention import MetaAttentionConfig
 
 
 # ───────────────────────── Chunk 1: late_slice preset ─────────────────────────
 
 def _resolved(num_layers, ca, target):
-    cfg = MetaSpiderConfig(model_name="x", target_layers=target, cross_attn_layers=ca)
+    cfg = MetaAttentionConfig(model_name="x", target_layers=target, cross_attn_layers=ca)
     cfg.resolve_defaults(base_num_layers=num_layers, base_hidden_dim=64)
     return cfg
 
@@ -23,13 +23,13 @@ def test_late_slice_reads_strictly_below_ca():
 
 
 def test_late_slice_requires_explicit_ca():
-    cfg = MetaSpiderConfig(model_name="x", target_layers="late_slice")  # ca None
+    cfg = MetaAttentionConfig(model_name="x", target_layers="late_slice")  # ca None
     with pytest.raises(ValueError):
         cfg.resolve_defaults(48, 64)
 
 
 def test_late_slice_rejects_low_ca():
-    cfg = MetaSpiderConfig(model_name="x", target_layers="late_slice", cross_attn_layers=[2, 4])
+    cfg = MetaAttentionConfig(model_name="x", target_layers="late_slice", cross_attn_layers=[2, 4])
     with pytest.raises(ValueError):
         cfg.resolve_defaults(48, 64)  # min_ca=2 <= num_layers//3 + 1
 
@@ -52,7 +52,7 @@ def test_normal_presets_unaffected_by_late_slice_code():
 # ───────────────────────── Chunk 2: chunked vocab loss ─────────────────────────
 
 def test_chunked_lm_loss_matches_full_ce():
-    from meta_loom.training.losses import chunked_lm_loss
+    from daimon_loom.training.losses import chunked_lm_loss
     torch.manual_seed(0)
     B, S, H, V = 2, 7, 64, 50
     hidden = torch.randn(B, S, H, requires_grad=True)
@@ -69,7 +69,7 @@ def test_chunked_lm_loss_matches_full_ce():
 
 
 def test_chunked_lm_loss_all_masked_is_zero():
-    from meta_loom.training.losses import chunked_lm_loss
+    from daimon_loom.training.losses import chunked_lm_loss
     hidden = torch.randn(1, 4, 8, requires_grad=True)
     loss = chunked_lm_loss(hidden, torch.randn(5, 8), torch.full((1, 4), -100))
     assert loss.item() == 0.0
@@ -79,7 +79,7 @@ def test_chunked_lm_loss_softcap():
     """softcap (Gemma final_logit_softcapping=30) == manual 30·tanh(logits/30) before CE."""
     import torch.nn.functional as F
 
-    from meta_loom.training.losses import chunked_lm_loss
+    from daimon_loom.training.losses import chunked_lm_loss
     torch.manual_seed(0)
     B, S, H, V = 2, 7, 16, 50
     hidden = torch.randn(B, S, H)
@@ -101,7 +101,7 @@ def test_chunked_lm_loss_callable_lm_head():
     """lm_head as a callable module (the path for nf4 Linear4bit) == passing the weight directly."""
     import torch.nn as nn
 
-    from meta_loom.training.losses import chunked_lm_loss
+    from daimon_loom.training.losses import chunked_lm_loss
     torch.manual_seed(0)
     B, S, H, V = 2, 6, 16, 40
     hidden = torch.randn(B, S, H)
@@ -116,7 +116,7 @@ def test_chunked_lm_loss_callable_lm_head():
 # ───────────── Chunk 3+4 wiring: --slice flag, dataset 1.3, collate ─────────────
 
 def test_parse_layers_passes_late_slice():
-    from meta_loom.cli._common import parse_layers
+    from daimon_loom.cli._common import parse_layers
     assert parse_layers("late_slice") == "late_slice"
     assert parse_layers("late") == "late"
     assert parse_layers("34,38") == [34, 38]
@@ -124,8 +124,8 @@ def test_parse_layers_passes_late_slice():
 
 def test_dataset_roundtrip_cut_hidden_v13(tmp_path):
     """cut_hidden/input_ids/labels survive save/load; format bumps 1.2→1.3."""
-    from meta_loom import ActivationDatasetCollector
-    from meta_loom.training.collector import DatasetSample
+    from daimon_loom import ActivationDatasetCollector
+    from daimon_loom.training.collector import DatasetSample
 
     s = DatasetSample(
         input_text="q", ground_truth="a", activations={5: torch.randn(8)},
@@ -149,7 +149,7 @@ def test_dataset_roundtrip_cut_hidden_v13(tmp_path):
 
 def test_build_slice_device_map():
     """device_map: bottom (0..cut)→cpu, top + embed/rotary/norm/lm_head→GPU."""
-    from meta_core.slice_forward import build_slice_device_map
+    from daimon_loom.slice_forward import build_slice_device_map
     dm = build_slice_device_map(num_layers=32, cut_layer=20)
     assert dm["model.layers.0"] == "cpu" and dm["model.layers.20"] == "cpu"
     assert dm["model.layers.21"] == 0 and dm["model.layers.31"] == 0
@@ -163,8 +163,8 @@ def test_collate_slice_right_pads():
     """_collate_slice: right-pad (real tokens first), labels/cut_hidden zeroed in the tail."""
     from types import SimpleNamespace
 
-    from meta_loom import Trainer
-    from meta_loom.training.collector import DatasetSample
+    from daimon_loom import Trainer
+    from daimon_loom.training.collector import DatasetSample
 
     samples = [
         DatasetSample(input_text="a", ground_truth="x", activations={},

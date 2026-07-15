@@ -1,7 +1,7 @@
 """code_spec_sessions (GoalAnchor v4, кодинг): спеки, AST-грейдеры, sandbox, дистилляция."""
 import random
 
-from meta_loom.data import code_spec_sessions as CS
+from daimon_loom.data import code_spec_sessions as CS
 
 RAW = [{  # минимальный MBPP-подобный сырец (инжектируем вместо datasets)
     "task_id": 1, "prompt": "Write a function to add two numbers.",
