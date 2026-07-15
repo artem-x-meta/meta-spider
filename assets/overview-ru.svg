@@ -9,10 +9,10 @@
   <text x="40" y="38" fill="#cfd6e2" font-size="16" font-weight="700">Meta-Spider — общая картина</text>
   <text x="40" y="58" fill="#9aa3b2" font-size="11.5">тонкая обучаемая обвязка неуверенности на ЗАМОРОЖЕННОЙ LLM — строим, она читает и впрыскивает, ей рулят или просто читают, деплоят везде.</text>
 
-  <!-- ===================== A · BUILD (meta-loom) ===================== -->
+  <!-- ===================== A · BUILD (daimon-loom) ===================== -->
   <rect x="34" y="80" width="224" height="446" rx="12" fill="#0d1118" stroke="#5a4a2e"/>
   <text x="50" y="104" fill="#f0b86e" font-size="13" font-weight="700">СБОРКА</text>
-  <text x="50" y="120" fill="#7a8493" font-size="10">фабрика · meta-loom</text>
+  <text x="50" y="120" fill="#7a8493" font-size="10">фабрика · daimon-loom</text>
   <text x="50" y="142" fill="#9aa3b2" font-size="10">metaloom build-universal --model N</text>
 
   <rect x="54" y="158" width="184" height="58" rx="8" fill="#0e1622" stroke="#f0b86e"/>
@@ -44,10 +44,10 @@
   <path d="M258,290 L292,290" stroke="#8a93a6" stroke-width="2.5" marker-end="url(#arr)"/>
   <text x="275" y="282" fill="#9aa3b2" font-size="9.5" text-anchor="middle">attach</text>
 
-  <!-- ===================== B · CORE (meta-core) ===================== -->
+  <!-- ===================== B · CORE (meta-attention) ===================== -->
   <rect x="296" y="80" width="300" height="446" rx="12" fill="#0d1118" stroke="#2f5a8a"/>
   <text x="312" y="104" fill="#5b8fd0" font-size="13" font-weight="700">ОБВЯЗКА на замороженной базе</text>
-  <text x="312" y="120" fill="#7a8493" font-size="10">механизм · meta-core</text>
+  <text x="312" y="120" fill="#7a8493" font-size="10">механизм · meta-attention</text>
 
   <!-- frozen base -->
   <rect x="316" y="136" width="260" height="270" rx="10" fill="#0e1622" stroke="#3a4456"/>
@@ -98,7 +98,7 @@
 
   <!-- gain -->
   <rect x="636" y="116" width="228" height="84" rx="9" fill="#0e1622" stroke="#f0b86e"/>
-  <text x="652" y="138" fill="#f0b86e" font-size="11.5" font-weight="700">ручка gain <tspan fill="#7a8493" font-weight="400" font-size="9">· meta-core</tspan></text>
+  <text x="652" y="138" fill="#f0b86e" font-size="11.5" font-weight="700">ручка gain <tspan fill="#7a8493" font-weight="400" font-size="9">· meta-attention</tspan></text>
   <text x="652" y="156" fill="#9aa3b2" font-size="9.5">регулятор силы инъекции на лету</text>
   <line x1="652" y1="178" x2="848" y2="178" stroke="#3a4456" stroke-width="4" stroke-linecap="round"/>
   <line x1="652" y1="178" x2="760" y2="178" stroke="#2f5a8a" stroke-width="4" stroke-linecap="round"/>
@@ -107,7 +107,7 @@
 
   <!-- watchdog -->
   <rect x="636" y="208" width="228" height="92" rx="9" fill="#0e1622" stroke="#3f6b49"/>
-  <text x="652" y="230" fill="#7fcf8f" font-size="11.5" font-weight="700">Сторож <tspan fill="#7a8493" font-weight="400" font-size="9">· meta-core</tspan></text>
+  <text x="652" y="230" fill="#7fcf8f" font-size="11.5" font-weight="700">Сторож <tspan fill="#7a8493" font-weight="400" font-size="9">· meta-attention</tspan></text>
   <text x="652" y="248" fill="#9aa3b2" font-size="9.5">датчик «только чтение» (ConfidenceProbe)</text>
   <text x="652" y="265" fill="#9aa3b2" font-size="9.5">вердикт → внешнее действие:</text>
   <text x="652" y="281" fill="#7a8493" font-size="9.5">поиск · уточнить · эскалация</text>
@@ -115,23 +115,23 @@
 
   <!-- agent -->
   <rect x="636" y="308" width="228" height="64" rx="9" fill="#0e1622" stroke="#5a8f6a"/>
-  <text x="652" y="330" fill="#7fcf8f" font-size="11.5" font-weight="700">агентный рантайм <tspan fill="#7a8493" font-weight="400" font-size="9">· meta-agent</tspan></text>
+  <text x="652" y="330" fill="#7fcf8f" font-size="11.5" font-weight="700">агентный рантайм <tspan fill="#7a8493" font-weight="400" font-size="9">· daimon-agent</tspan></text>
   <text x="652" y="348" fill="#9aa3b2" font-size="9.5">нативная тул-петля; сигнал</text>
   <text x="652" y="362" fill="#9aa3b2" font-size="9.5">роутится в действие</text>
 
   <!-- deploy -->
   <rect x="636" y="380" width="228" height="64" rx="9" fill="#0e1622" stroke="#7a5ea0"/>
-  <text x="652" y="402" fill="#b08ad6" font-size="11.5" font-weight="700">деплой <tspan fill="#7a8493" font-weight="400" font-size="9">· meta-deploy</tspan></text>
+  <text x="652" y="402" fill="#b08ad6" font-size="11.5" font-weight="700">деплой <tspan fill="#7a8493" font-weight="400" font-size="9">· daimon-deploy</tspan></text>
   <text x="652" y="420" fill="#9aa3b2" font-size="9.5">GGUF-sidecar → llama.cpp (CPU)</text>
   <text x="652" y="434" fill="#9aa3b2" font-size="9.5">та же ручка через META_GAIN</text>
 
   <!-- ===================== legend ===================== -->
   <text x="40" y="552" fill="#7a8493" font-size="10">пакеты:</text>
   <g font-size="10" fill="#9aa3b2">
-    <rect x="92" y="544" width="10" height="10" rx="2" fill="#2f5a8a"/><text x="108" y="553">meta-core</text>
-    <rect x="184" y="544" width="10" height="10" rx="2" fill="#f0b86e"/><text x="200" y="553">meta-loom</text>
-    <rect x="278" y="544" width="10" height="10" rx="2" fill="#7fcf8f"/><text x="294" y="553">meta-agent</text>
-    <rect x="376" y="544" width="10" height="10" rx="2" fill="#b08ad6"/><text x="392" y="553">meta-deploy</text>
+    <rect x="92" y="544" width="10" height="10" rx="2" fill="#2f5a8a"/><text x="108" y="553">meta-attention</text>
+    <rect x="184" y="544" width="10" height="10" rx="2" fill="#f0b86e"/><text x="200" y="553">daimon-loom</text>
+    <rect x="278" y="544" width="10" height="10" rx="2" fill="#7fcf8f"/><text x="294" y="553">daimon-agent</text>
+    <rect x="376" y="544" width="10" height="10" rx="2" fill="#b08ad6"/><text x="392" y="553">daimon-deploy</text>
   </g>
   <text x="860" y="553" fill="#7a8493" font-size="9.5" text-anchor="end">база заморожена · обвязка ~2% · модельно-специфична</text>
 </svg>

@@ -1,4 +1,4 @@
-# meta-spider — docs site
+# daimon — docs site
 
 Self-contained static documentation page (Django/readthedocs-style). No build, no server:
 **just open `index.html` in any browser** (works from `file://`).
